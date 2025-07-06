@@ -211,22 +211,18 @@ function processExcelFile(file, type) {
             if (type === 'source') {
                 searchSourceWorkbook = workbook;
                 populateSheetDropdown(workbook, 'searchSourceSheet');
-                log('Source file loaded successfully with ' + workbook.SheetNames.length + ' sheets', 'success');
             } else {
                 searchTargetWorkbook = workbook;
                 populateSheetDropdown(workbook, 'searchTargetSheet');
-                log('Target file loaded successfully with ' + workbook.SheetNames.length + ' sheets', 'success');
             }
         } catch (error) {
             console.error(`[AdvancedSearch] Error processing ${type} file:`, error);
             alert(`Error processing the Excel file: ${error.message}`);
-            log(`Error processing ${type} file: ${error.message}`, 'error');
         }
     };
     
     reader.onerror = function() {
         alert('Error reading the file. Please try again.');
-        log(`Error reading ${type} file`, 'error');
     };
     
     reader.readAsArrayBuffer(file);
@@ -256,7 +252,6 @@ function populateColumnDropdown(workbook, sheetName, dropdownId) {
     try {
         const sheet = workbook.Sheets[sheetName];
         if (!sheet || !sheet['!ref']) {
-            log(`No data found in sheet: ${sheetName}`, 'warning');
             return;
         }
         
@@ -273,11 +268,8 @@ function populateColumnDropdown(workbook, sheetName, dropdownId) {
             option.textContent = `${colLetter}: ${headerValue}`;
             dropdown.appendChild(option);
         }
-        
-        log(`Populated ${range.e.c - range.s.c + 1} columns for sheet: ${sheetName}`, 'success');
     } catch (error) {
         console.error('[populateColumnDropdown] Error:', error);
-        log(`Error populating columns for sheet ${sheetName}: ${error.message}`, 'error');
     }
 }
 
@@ -320,7 +312,6 @@ function handleSourceSheetChange(event) {
     const sheetName = event.target.value;
     if (searchSourceWorkbook && sheetName) {
         populateSearchColumns(searchSourceWorkbook, sheetName);
-        log('Source sheet changed to: ' + sheetName, 'success');
     }
 }
 
@@ -328,7 +319,6 @@ function handleTargetSheetChange(event) {
     const sheetName = event.target.value;
     if (searchTargetWorkbook && sheetName) {
         populateColumnDropdown(searchTargetWorkbook, sheetName, 'searchTargetColumn');
-        log('Target sheet changed to: ' + sheetName, 'success');
     }
 }
 
@@ -336,10 +326,8 @@ function handleSearchTypeChange(event) {
     const similarityContainer = document.getElementById('similarityThreshold').parentElement.parentElement;
     if (event.target.value === 'partial') {
         similarityContainer.style.display = 'block';
-        log('Switched to Fuzzy Match mode', 'success');
     } else {
         similarityContainer.style.display = 'none';
-        log('Switched to Exact Match mode', 'success');
     }
 }
 
@@ -392,8 +380,6 @@ function addSearchColumn() {
     newItem.appendChild(select);
     newItem.appendChild(removeBtn);
     container.appendChild(newItem);
-    
-    log('Added new search column', 'success');
 }
 
 function removeSearchColumn(button) {
@@ -401,10 +387,8 @@ function removeSearchColumn(button) {
     const items = container.querySelectorAll('.search-column-item');
     if (items.length > 1) {
         button.parentElement.remove();
-        log('Removed search column', 'success');
     } else {
         alert('At least one search column is required.');
-        log('Cannot remove the last search column', 'warning');
     }
 }
 
@@ -458,7 +442,6 @@ function performAdvancedSearch() {
         } catch (error) {
             console.error('[AdvancedSearch] Search error:', error);
             alert('Error during search execution: ' + error.message);
-            log('Search failed: ' + error.message, 'error');
             hideProgress();
         }
     }, 100);
@@ -470,7 +453,6 @@ function executeSearch(sourceWorkbook, sourceSheet, searchColumns, targetWorkboo
     const targetData = XLSX.utils.sheet_to_json(targetWorkbook.Sheets[targetSheet], { header: 1 });
 
     updateProgress(10, 'Data extracted, processing...');
-    log(`Processing ${sourceData.length - 1} source records against ${targetData.length - 1} target records`, 'success');
 
     // Get column indices
     const sourceColumnIndices = searchColumns.map(col => XLSX.utils.decode_col(col));
@@ -492,7 +474,7 @@ function executeSearch(sourceWorkbook, sourceSheet, searchColumns, targetWorkboo
         if (!sourceRow) continue;
 
         const progress = 10 + (i / sourceData.length) * 80;
-        updateProgress(progress, `Processing row ${i} of ${sourceData.length}`);
+        updateProgress(progress, `Processing row ${i} of ${sourceData.length} (${Math.round(progress)}%)`);
 
         // Extract search values
         const searchValues = sourceColumnIndices.map(colIndex => 
@@ -553,11 +535,6 @@ function executeSearch(sourceWorkbook, sourceSheet, searchColumns, targetWorkboo
         if (matchType === 'Exact') matchCount++;
         else if (matchType === 'Partial') partialMatchCount++;
         else noMatchCount++;
-
-        // Log progress every 100 rows
-        if (i % 100 === 0) {
-            log(`Processed ${i} of ${totalRows} rows...`, 'success');
-        }
     }
 
     updateProgress(90, 'Finalizing results...');
@@ -663,7 +640,6 @@ function levenshteinDistance(str1, str2) {
 function showProgress() {
     document.getElementById('progressContainer').style.display = 'block';
     document.getElementById('progressText').style.display = 'block';
-    document.getElementById('logContainer').style.display = 'block';
     document.getElementById('searchSummary').style.display = 'none';
     document.getElementById('exportSearchBtn').style.display = 'none';
 }
@@ -683,18 +659,6 @@ function updateProgress(percentage, message) {
     if (progressText) {
         progressText.textContent = message || 'Processing...';
     }
-    if (message) {
-        log(message, 'success');
-    }
-}
-
-function log(message, type = 'info') {
-    const logContent = document.getElementById('logContent');
-    const logEntry = document.createElement('div');
-    logEntry.className = `log-entry ${type}`;
-    logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-    logContent.appendChild(logEntry);
-    logContent.scrollTop = logContent.scrollHeight;
 }
 
 function displayResults(results) {
@@ -723,9 +687,6 @@ function displayResults(results) {
     document.getElementById('summaryStats').innerHTML = statsHtml;
     document.getElementById('searchSummary').style.display = 'block';
     document.getElementById('exportSearchBtn').style.display = 'inline-flex';
-    
-    // Log final results
-    log(`Search completed: ${summary.matchCount} exact matches, ${summary.partialMatchCount} partial matches, ${summary.noMatchCount} no matches`, 'success');
     
     setTimeout(() => {
         hideProgress();
@@ -766,15 +727,12 @@ function exportResults() {
             const filename = `advanced_search_results_${new Date().toISOString().split('T')[0]}.xlsx`;
             XLSX.writeFile(newWorkbook, filename);
             
-            log(`Results exported to ${filename}`, 'success');
         } catch (error) {
             console.error('[exportResults] Error:', error);
             alert('Error exporting results: ' + error.message);
-            log('Export failed: ' + error.message, 'error');
         }
     } else {
         alert('No search results available for export');
-        log('No search results to export', 'warning');
     }
 }
 
@@ -787,8 +745,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize similarity display
     handleSimilarityChange({ target: { value: 0.8 } });
-    
-    log('DataGuard Advanced Column Search Tool initialized successfully', 'success');
 });
 
 // Test functions for debugging

@@ -423,45 +423,7 @@ body {
     transition: width 0.3s ease;
 }
 
-.log-area {
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 20px;
-    margin: 20px 0;
-    max-height: 300px;
-    overflow-y: auto;
-    border: 1px solid #e9ecef;
-}
 
-.log-area h3 {
-    margin-bottom: 15px;
-    color: #333;
-    font-size: 1.1em;
-}
-
-.log-entry {
-    padding: 8px 0;
-    border-bottom: 1px solid #e9ecef;
-    color: #666;
-    font-family: 'Courier New', monospace;
-    font-size: 0.9em;
-}
-
-.log-entry:last-child {
-    border-bottom: none;
-}
-
-.log-entry.success {
-    color: #28a745;
-}
-
-.log-entry.warning {
-    color: #ffc107;
-}
-
-.log-entry.error {
-    color: #dc3545;
-}
 
 .loading-text {
     text-align: center;
