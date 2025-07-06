@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataGuard - Advanced Column Search Tool</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-logo">
+                <img src="img/DataGuard-Logo.png" alt="DataGuard Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <div style="display: none; background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; margin-right: 20px;">
+                    <strong style="font-size: 24px; color: white;">DataGuard</strong>
+                </div>
+                <div>
+                    <h1>DataGuard</h1>
+                    <p>Advanced Column Search Tool</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="task-selector">
+                <label for="taskSelect">Select Task:</label>
+                <select id="taskSelect" class="task-dropdown">
+                    <option value="">Choose a task...</option>
+                    <option value="advanced-search" selected>Advanced Column Search</option>
+                </select>
+            </div>
+
+            <!-- Advanced Column Search -->
+            <div id="advanced-search" class="task-content active">
+                <h2>🔍 Advanced Column Search</h2>
+                <p class="alert alert-info">Search for multiple column values within a target column using exact or partial matching with configurable similarity thresholds.</p>
+                
+                <!-- File Upload Section -->
+                <div class="section">
+                    <h3>📁 File Selection</h3>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>Source Excel File:</label>
+                            <div class="file-input">
+                                <input type="file" id="searchSourceFile" accept=".xlsx,.xls" />
+                                <label for="searchSourceFile" class="file-input-label">
+                                    📁 Choose Source File
+                                </label>
+                            </div>
+                            <div class="file-info" id="sourceFileInfo">No file selected</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Target Excel File:</label>
+                            <div class="file-input">
+                                <input type="file" id="searchTargetFile" accept=".xlsx,.xls" />
+                                <label for="searchTargetFile" class="file-input-label">
+                                    📁 Choose Target File
+                                </label>
+                            </div>
+                            <div class="file-info" id="targetFileInfo">No file selected</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sheet and Column Selection -->
+                <div class="section">
+                    <h3>📊 Sheet and Column Configuration</h3>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>Source Sheet:</label>
+                            <select id="searchSourceSheet" class="form-control">
+                                <option value="">Select sheet...</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Target Sheet:</label>
+                            <select id="searchTargetSheet" class="form-control">
+                                <option value="">Select sheet...</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Target Column (to search in):</label>
+                        <select id="searchTargetColumn" class="form-control">
+                            <option value="">Select column...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Search Columns (from source sheet):</label>
+                        <div id="searchColumnsContainer" class="search-columns-container">
+                            <div class="search-column-item">
+                                <select class="search-column-select form-control">
+                                    <option value="">Select column...</option>
+                                </select>
+                                <button type="button" class="btn btn-remove" onclick="removeSearchColumn(this)">Remove</button>
+                            </div>
+                        </div>
+                        <button type="button" id="addSearchColumn" class="btn btn-secondary">
+                            <span class="add-icon">+</span> Add Search Column
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search Configuration -->
+                <div class="section">
+                    <h3>⚙️ Search Configuration</h3>
+                    <div class="form-group">
+                        <label>Search Type:</label>
+                        <div class="radio-group">
+                            <input type="radio" id="exactMatch" name="searchType" value="exact" checked>
+                            <label for="exactMatch">Exact Match</label>
+                        </div>
+                        <div class="radio-group">
+                            <input type="radio" id="partialMatch" name="searchType" value="partial">
+                            <label for="partialMatch">Fuzzy Match</label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="similarityThreshold">Similarity Threshold (for fuzzy matching):</label>
+                        <div class="slider-container">
+                            <input type="range" id="similarityThreshold" min="0.1" max="1.0" step="0.1" value="0.8">
+                            <span class="similarity-display">
+                                <span id="similarityValue">80%</span>
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="searchCaseSensitive">
+                            <label for="searchCaseSensitive">Case Sensitive</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <button id="performSearchBtn" class="btn btn-primary">
+                    🔍 Perform Search
+                </button>
+                
+                <!-- Progress Section -->
+                <div id="progressContainer" class="progress-bar" style="display: none;">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div id="progressText" class="loading-text" style="display: none;">Processing...</div>
+
+                <!-- Log Section -->
+                <div id="logContainer" class="log-area" style="display: none;">
+                    <h3>Process Log</h3>
+                    <div id="logContent"></div>
+                </div>
+
+                <!-- Results Summary -->
+                <div id="searchSummary" class="search-summary" style="display: none;">
+                    <div class="results-header">
+                        <h3>Search Results Summary</h3>
+                        <button id="exportSearchBtn" class="btn btn-export" style="display: none;">Export Results</button>
+                    </div>
+                    <div id="summaryStats" class="summary-stats"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html> 
