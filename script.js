@@ -48,6 +48,165 @@ function resetBatchProcessingState() {
     showBatchControls(false, false);
 }
 
+function processBatchInternal() {
+    if (!batchProcessing.isActive || batchProcessing.cancelRequested) {
+        hideProgress();
+        resetBatchProcessingState();
+        return;
+    }
+    const {
+        sourceData, targetData, sourceColumnIndices, targetColumnIndex,
+        searchType, similarityThreshold, caseSensitive, onProgress, onComplete, incremental,
+        matchingLogic, customMatchCount, allSourceColumns
+    } = batchProcessing.params;
+    let i = batchProcessing.i;
+    const batchSize = batchProcessing.batchSize;
+    const end = Math.min(i + batchSize, sourceData.length);
+
+    for (; i < end; i++) {
+        const sourceRow = sourceData[i];
+        if (!sourceRow) continue;
+
+        // Extract search values
+        const searchValues = sourceColumnIndices.map(colIndex =>
+            sourceRow[colIndex] ? String(sourceRow[colIndex]).trim() : ''
+        ).filter(value => value !== '');
+
+        if (searchValues.length === 0) {
+            // No valid search values
+            const resultRow = [
+                i + 1,
+                ...allSourceColumns.map(colIndex => sourceRow[colIndex] || ''),
+                '',
+                '0%',
+                'No Match'
+            ];
+            batchProcessing.results.push(resultRow);
+            batchProcessing.noMatchCount++;
+            continue;
+        }
+
+        // Find best match in target data
+        let bestMatch = null;
+        let bestSimilarity = 0;
+        let matchType = 'No Match';
+
+        for (let j = 1; j < targetData.length; j++) {
+            const targetRow = targetData[j];
+            if (!targetRow || !targetRow[targetColumnIndex]) continue;
+
+            const targetValue = String(targetRow[targetColumnIndex]).trim();
+            if (!targetValue) continue;
+
+            const similarity = calculateRowSimilarity(searchValues, targetValue, searchType, caseSensitive, matchingLogic, customMatchCount);
+
+            if (searchType === 'exact' && similarity === 1.0) {
+                bestMatch = targetValue;
+                bestSimilarity = similarity;
+                matchType = 'Exact';
+                break; // Found exact match, no need to continue
+            } else if (searchType === 'partial' && similarity >= similarityThreshold && similarity > bestSimilarity) {
+                bestMatch = targetValue;
+                bestSimilarity = similarity;
+                matchType = bestSimilarity === 1.0 ? 'Exact' : 'Partial';
+            }
+        }
+
+        // Add result with all source columns
+        const resultRow = [
+            i + 1,
+            ...allSourceColumns.map(colIndex => sourceRow[colIndex] || ''),
+            bestMatch || '',
+            Math.round(bestSimilarity * 100) + '%',
+            matchType
+        ];
+        batchProcessing.results.push(resultRow);
+
+        // Update counters
+        if (matchType === 'Exact') batchProcessing.matchCount++;
+        else if (matchType === 'Partial') batchProcessing.partialMatchCount++;
+        else batchProcessing.noMatchCount++;
+    }
+
+    batchProcessing.i = i;
+    if (onProgress) {
+        onProgress((i / sourceData.length) * 100);
+    }
+
+    if (i < sourceData.length) {
+        if (batchProcessing.incremental) {
+            // Pause and wait for user to continue
+            batchProcessing.isPaused = true;
+            showBatchControls(true, true);
+            if (onComplete) {
+                onComplete({
+                    data: batchProcessing.results,
+                    summary: {
+                        totalSourceRecords: sourceData.length - 1,
+                        matchCount: batchProcessing.matchCount,
+                        partialMatchCount: batchProcessing.partialMatchCount,
+                        noMatchCount: batchProcessing.noMatchCount,
+                        searchType,
+                        similarityThreshold,
+                        matchingLogic,
+                        customMatchCount,
+                        searchColumns: sourceColumnIndices.map(idx => XLSX.utils.encode_col(idx)),
+                        targetColumn: XLSX.utils.encode_col(targetColumnIndex)
+                    }
+                }, false);
+            }
+        } else {
+            setTimeout(processBatchInternal, 0);
+        }
+    } else {
+        // Done
+        showBatchControls(false, false);
+        if (onComplete) {
+            onComplete({
+                data: batchProcessing.results,
+                summary: {
+                    totalSourceRecords: sourceData.length - 1,
+                    matchCount: batchProcessing.matchCount,
+                    partialMatchCount: batchProcessing.partialMatchCount,
+                    noMatchCount: batchProcessing.noMatchCount,
+                    searchType,
+                    similarityThreshold,
+                    matchingLogic,
+                    customMatchCount,
+                    searchColumns: sourceColumnIndices.map(idx => XLSX.utils.encode_col(idx)),
+                    targetColumn: XLSX.utils.encode_col(targetColumnIndex)
+                }
+            }, true);
+        }
+    }
+}
+
+function executeSearchInBatches(params) {
+    // Cancel any previous batch
+    resetBatchProcessingState();
+    batchProcessing.isActive = true;
+    batchProcessing.cancelRequested = false;
+    batchProcessing.isPaused = false;
+    batchProcessing.params = params;
+    batchProcessing.i = 1;
+    batchProcessing.results = [];
+    batchProcessing.matchCount = 0;
+    batchProcessing.partialMatchCount = 0;
+    batchProcessing.noMatchCount = 0;
+    batchProcessing.totalRows = params.sourceData.length;
+    
+    // Create headers with all source columns
+    const sourceHeaders = params.allSourceColumns.map(col => `Source_${XLSX.utils.encode_col(col)}`);
+    batchProcessing.headers = ['Row', ...sourceHeaders, 'Target_Value', 'Similarity_%', 'Match_Type'];
+    batchProcessing.results.push(batchProcessing.headers);
+    batchProcessing.onProgress = params.onProgress;
+    batchProcessing.onComplete = params.onComplete;
+    batchProcessing.incremental = params.incremental;
+
+    showBatchControls(true, false);
+    processBatchInternal();
+}
+
 // Initialize the application
 function initializeAdvancedSearch() {
     if (advancedSearchInitialized) {
@@ -85,6 +244,11 @@ function initializeAdvancedSearch() {
 
     // Similarity threshold handler
     document.getElementById('similarityThreshold').addEventListener('input', handleSimilarityChange);
+
+    // Matching logic handlers
+    document.querySelectorAll('input[name="matchingLogic"]').forEach(radio => {
+        radio.addEventListener('change', handleMatchingLogicChange);
+    });
 
     // Dynamic column management
     document.getElementById('addSearchColumn').addEventListener('click', addSearchColumn);
@@ -356,6 +520,7 @@ function handleSourceSheetChange(event) {
     const sheetName = event.target.value;
     if (searchSourceWorkbook && sheetName) {
         populateSearchColumns(searchSourceWorkbook, sheetName);
+        updateTotalSearchColumns();
     }
 }
 
@@ -376,8 +541,37 @@ function handleSearchTypeChange(event) {
 }
 
 function handleSimilarityChange(event) {
-    const value = Math.round(event.target.value * 100);
-    document.getElementById('similarityValue').textContent = value + '%';
+    const value = parseFloat(event.target.value);
+    document.getElementById('similarityValue').textContent = Math.round(value * 100) + '%';
+}
+
+function handleMatchingLogicChange(event) {
+    const customInput = document.getElementById('customMatchCount');
+    const customLabel = document.querySelector('label[for="customMatch"]');
+    
+    if (event.target.value === 'custom') {
+        customInput.style.display = 'inline-block';
+        updateTotalSearchColumns();
+    } else {
+        customInput.style.display = 'none';
+    }
+}
+
+function updateTotalSearchColumns() {
+    const searchColumns = document.querySelectorAll('.search-column-select');
+    const totalSpan = document.getElementById('totalSearchColumns');
+    const customInput = document.getElementById('customMatchCount');
+    
+    if (totalSpan) {
+        totalSpan.textContent = searchColumns.length;
+    }
+    
+    if (customInput) {
+        customInput.max = searchColumns.length;
+        if (parseInt(customInput.value) > searchColumns.length) {
+            customInput.value = Math.max(1, Math.ceil(searchColumns.length / 2));
+        }
+    }
 }
 
 // Dynamic column management
@@ -424,6 +618,8 @@ function addSearchColumn() {
     newItem.appendChild(select);
     newItem.appendChild(removeBtn);
     container.appendChild(newItem);
+    
+    updateTotalSearchColumns();
 }
 
 function removeSearchColumn(button) {
@@ -431,6 +627,7 @@ function removeSearchColumn(button) {
     const items = container.querySelectorAll('.search-column-item');
     if (items.length > 1) {
         button.parentElement.remove();
+        updateTotalSearchColumns();
     } else {
         alert('At least one search column is required.');
     }
@@ -516,6 +713,8 @@ function exportResults() {
                 ['Search Configuration'],
                 ['Search Type', summary.searchType],
                 ['Similarity Threshold', summary.similarityThreshold],
+                ['Matching Logic', summary.matchingLogic],
+                ['Custom Match Count', summary.customMatchCount || 'N/A'],
                 ['Search Columns', summary.searchColumns.join(', ')],
                 ['Target Column', summary.targetColumn],
                 [''],
@@ -537,31 +736,60 @@ function exportResults() {
     }
 }
 
-function calculateRowSimilarity(searchValues, targetValue, searchType, caseSensitive) {
+function calculateRowSimilarity(searchValues, targetValue, searchType, caseSensitive, matchingLogic = 'all', customMatchCount = null) {
+    if (searchValues.length === 0) return 0;
+    
     if (searchType === 'exact') {
-        // For exact match, check if all search values are found in target
+        // For exact match, check based on matching logic
         const targetStr = caseSensitive ? targetValue : targetValue.toLowerCase();
+        let matchCount = 0;
+        
         for (const searchValue of searchValues) {
             if (!searchValue) continue;
             const searchStr = caseSensitive ? searchValue : searchValue.toLowerCase();
-            if (!targetStr.includes(searchStr)) {
-                return 0;
+            if (targetStr.includes(searchStr)) {
+                matchCount++;
             }
         }
-        return 1.0;
-    } else {
-        // For partial match, calculate average similarity
-        let totalSimilarity = 0;
-        let validValues = 0;
         
+        // Apply matching logic
+        if (matchingLogic === 'all') {
+            return matchCount === searchValues.filter(v => v).length ? 1.0 : 0;
+        } else if (matchingLogic === 'any') {
+            return matchCount > 0 ? 1.0 : 0;
+        } else if (matchingLogic === 'custom') {
+            const requiredMatches = customMatchCount || Math.ceil(searchValues.filter(v => v).length / 2);
+            return matchCount >= requiredMatches ? 1.0 : 0;
+        }
+        
+        return 0;
+    } else {
+        // For partial match, calculate individual similarities first
+        const similarities = [];
         for (const searchValue of searchValues) {
             if (!searchValue) continue;
             const similarity = calculateSimilarity(searchValue, targetValue, caseSensitive);
-            totalSimilarity += similarity;
-            validValues++;
+            similarities.push(similarity);
         }
         
-        return validValues > 0 ? totalSimilarity / validValues : 0;
+        if (similarities.length === 0) return 0;
+        
+        // Apply matching logic to determine overall similarity
+        if (matchingLogic === 'all') {
+            // All must be above threshold - return minimum similarity
+            return Math.min(...similarities);
+        } else if (matchingLogic === 'any') {
+            // At least one must be above threshold - return maximum similarity
+            return Math.max(...similarities);
+        } else if (matchingLogic === 'custom') {
+            // Custom logic - return average of top N matches
+            const requiredMatches = customMatchCount || Math.ceil(similarities.length / 2);
+            const sortedSimilarities = similarities.sort((a, b) => b - a);
+            const topMatches = sortedSimilarities.slice(0, requiredMatches);
+            return topMatches.reduce((sum, sim) => sum + sim, 0) / topMatches.length;
+        }
+        
+        return 0;
     }
 }
 
@@ -638,6 +866,84 @@ function setupBatchControlHandlers() {
     }
 }
 
+// Add this function to trigger the search process from the UI
+function performAdvancedSearch() {
+    // Validate workbooks and selections
+    if (!searchSourceWorkbook || !searchTargetWorkbook) {
+        alert('Please upload both source and target Excel files.');
+        return;
+    }
+    const sourceSheetName = document.getElementById('searchSourceSheet').value;
+    const targetSheetName = document.getElementById('searchTargetSheet').value;
+    if (!sourceSheetName || !targetSheetName) {
+        alert('Please select both source and target sheets.');
+        return;
+    }
+    const targetColumnLetter = document.getElementById('searchTargetColumn').value;
+    if (!targetColumnLetter) {
+        alert('Please select a target column to search in.');
+        return;
+    }
+    // Collect search columns
+    const searchColumnSelects = document.querySelectorAll('.search-column-select');
+    const searchColumnLetters = Array.from(searchColumnSelects).map(sel => sel.value).filter(Boolean);
+    if (searchColumnLetters.length === 0) {
+        alert('Please select at least one search column from the source sheet.');
+        return;
+    }
+    // Get search type and threshold
+    const searchType = document.querySelector('input[name="searchType"]:checked').value;
+    let similarityThreshold = parseFloat(document.getElementById('similarityThreshold').value);
+    if (searchType === 'exact') similarityThreshold = 1.0;
+    const caseSensitive = document.getElementById('searchCaseSensitive').checked;
+    
+    // Get matching logic
+    const matchingLogic = document.querySelector('input[name="matchingLogic"]:checked').value;
+    const customMatchCount = matchingLogic === 'custom' ? parseInt(document.getElementById('customMatchCount').value) : null;
+    
+    // Batch mode: incremental if file is large (or user wants it)
+    const incremental = batchProcessing.incremental || false;
+    // Prepare data
+    const sourceSheet = searchSourceWorkbook.Sheets[sourceSheetName];
+    const targetSheet = searchTargetWorkbook.Sheets[targetSheetName];
+    const sourceData = XLSX.utils.sheet_to_json(sourceSheet, { header: 1 });
+    const targetData = XLSX.utils.sheet_to_json(targetSheet, { header: 1 });
+    // Map column letters to indices
+    const sourceColumnIndices = searchColumnLetters.map(letter => XLSX.utils.decode_col(letter));
+    const targetColumnIndex = XLSX.utils.decode_col(targetColumnLetter);
+    
+    // Get all source columns for export
+    const sourceRange = XLSX.utils.decode_range(sourceSheet['!ref']);
+    const allSourceColumns = [];
+    for (let col = sourceRange.s.c; col <= sourceRange.e.c; col++) {
+        allSourceColumns.push(col);
+    }
+    
+    // Show progress
+    showProgress();
+    updateProgress(0, 'Starting search...');
+    // Start batch search
+    executeSearchInBatches({
+        sourceData,
+        targetData,
+        sourceColumnIndices,
+        targetColumnIndex,
+        searchType,
+        similarityThreshold,
+        caseSensitive,
+        onProgress: (percent) => {
+            updateProgress(percent, `Processing... (${Math.round(percent)}%)`);
+        },
+        onComplete: (results, done) => {
+            if (done) displayResults(results);
+        },
+        incremental: batchProcessing.incremental || false,
+        matchingLogic,
+        customMatchCount,
+        allSourceColumns
+    });
+}
+
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', function() {
     initializeAdvancedSearch();
@@ -647,6 +953,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize similarity display
     handleSimilarityChange({ target: { value: 0.8 } });
+    
+    // Initialize matching logic
+    handleMatchingLogicChange({ target: { value: 'all' } });
+    updateTotalSearchColumns();
+    
     setupBatchControlHandlers();
 });
 
