@@ -667,6 +667,7 @@ function updateProgress(percentage, message) {
 }
 
 function displayResults(results) {
+    window.searchResults = results; // Ensure export always has access to the latest results
     const summary = results.summary;
     
     // Create summary stats
