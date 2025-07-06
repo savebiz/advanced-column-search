@@ -427,134 +427,139 @@ function performAdvancedSearch() {
     showProgress();
     updateProgress(0, 'Initializing search...');
 
-    // Perform search with progress updates
-    setTimeout(() => {
-        try {
-            const results = executeSearch(
-                searchSourceWorkbook, sourceSheet, searchColumns,
-                searchTargetWorkbook, targetSheet, targetColumn,
-                searchType, similarityThreshold, caseSensitive
-            );
-            
-            displayResults(results);
-            updateProgress(100, 'Search completed successfully!');
-            
-        } catch (error) {
-            console.error('[AdvancedSearch] Search error:', error);
-            alert('Error during search execution: ' + error.message);
-            hideProgress();
-        }
-    }, 100);
-}
-
-function executeSearch(sourceWorkbook, sourceSheet, searchColumns, targetWorkbook, targetSheet, targetColumn, searchType, similarityThreshold, caseSensitive) {
     // Extract data
-    const sourceData = XLSX.utils.sheet_to_json(sourceWorkbook.Sheets[sourceSheet], { header: 1 });
-    const targetData = XLSX.utils.sheet_to_json(targetWorkbook.Sheets[targetSheet], { header: 1 });
-
-    updateProgress(10, 'Data extracted, processing...');
-
-    // Get column indices
+    const sourceData = XLSX.utils.sheet_to_json(searchSourceWorkbook.Sheets[sourceSheet], { header: 1 });
+    const targetData = XLSX.utils.sheet_to_json(searchTargetWorkbook.Sheets[targetSheet], { header: 1 });
     const sourceColumnIndices = searchColumns.map(col => XLSX.utils.decode_col(col));
     const targetColumnIndex = XLSX.utils.decode_col(targetColumn);
 
-    // Prepare results
+    executeSearchInBatches({
+        sourceData,
+        targetData,
+        sourceColumnIndices,
+        targetColumnIndex,
+        searchType,
+        similarityThreshold,
+        caseSensitive,
+        onProgress: (percent) => {
+            updateProgress(percent, `Processing... ${Math.round(percent)}%`);
+        },
+        onComplete: (results) => {
+            displayResults(results);
+            updateProgress(100, 'Search completed successfully!');
+        }
+    });
+}
+
+function executeSearchInBatches(params) {
+    const {
+        sourceData, targetData, sourceColumnIndices, targetColumnIndex,
+        searchType, similarityThreshold, caseSensitive, onProgress, onComplete
+    } = params;
+
+    let i = 1;
     const results = [];
-    const headers = ['Row', ...searchColumns.map(col => `Source_${col}`), 'Target_Value', 'Similarity_%', 'Match_Type'];
+    const headers = ['Row', ...sourceColumnIndices.map(col => `Source_${col}`), 'Target_Value', 'Similarity_%', 'Match_Type'];
     results.push(headers);
 
-    let matchCount = 0;
-    let partialMatchCount = 0;
-    let noMatchCount = 0;
-
-    // Process each source row
+    let matchCount = 0, partialMatchCount = 0, noMatchCount = 0;
     const totalRows = sourceData.length - 1;
-    for (let i = 1; i < sourceData.length; i++) {
-        const sourceRow = sourceData[i];
-        if (!sourceRow) continue;
 
-        const progress = 10 + (i / sourceData.length) * 80;
-        updateProgress(progress, `Processing row ${i} of ${sourceData.length} (${Math.round(progress)}%)`);
+    function processBatch() {
+        const batchSize = 100;
+        const end = Math.min(i + batchSize, sourceData.length);
 
-        // Extract search values
-        const searchValues = sourceColumnIndices.map(colIndex => 
-            sourceRow[colIndex] ? String(sourceRow[colIndex]).trim() : ''
-        ).filter(value => value !== '');
+        for (; i < end; i++) {
+            const sourceRow = sourceData[i];
+            if (!sourceRow) continue;
 
-        if (searchValues.length === 0) {
-            // No valid search values
+            // Extract search values
+            const searchValues = sourceColumnIndices.map(colIndex =>
+                sourceRow[colIndex] ? String(sourceRow[colIndex]).trim() : ''
+            ).filter(value => value !== '');
+
+            if (searchValues.length === 0) {
+                // No valid search values
+                const resultRow = [
+                    i + 1,
+                    ...sourceColumnIndices.map(colIndex => sourceRow[colIndex] || ''),
+                    '',
+                    '0%',
+                    'No Match'
+                ];
+                results.push(resultRow);
+                noMatchCount++;
+                continue;
+            }
+
+            // Find best match in target data
+            let bestMatch = null;
+            let bestSimilarity = 0;
+            let matchType = 'No Match';
+
+            for (let j = 1; j < targetData.length; j++) {
+                const targetRow = targetData[j];
+                if (!targetRow || !targetRow[targetColumnIndex]) continue;
+
+                const targetValue = String(targetRow[targetColumnIndex]).trim();
+                if (!targetValue) continue;
+
+                const similarity = calculateRowSimilarity(searchValues, targetValue, searchType, caseSensitive);
+
+                if (searchType === 'exact' && similarity === 1.0) {
+                    bestMatch = targetValue;
+                    bestSimilarity = similarity;
+                    matchType = 'Exact';
+                    break; // Found exact match, no need to continue
+                } else if (searchType === 'partial' && similarity >= similarityThreshold && similarity > bestSimilarity) {
+                    bestMatch = targetValue;
+                    bestSimilarity = similarity;
+                    matchType = bestSimilarity === 1.0 ? 'Exact' : 'Partial';
+                }
+            }
+
+            // Add result
             const resultRow = [
                 i + 1,
                 ...sourceColumnIndices.map(colIndex => sourceRow[colIndex] || ''),
-                '',
-                '0%',
-                'No Match'
+                bestMatch || '',
+                Math.round(bestSimilarity * 100) + '%',
+                matchType
             ];
             results.push(resultRow);
-            noMatchCount++;
-            continue;
+
+            // Update counters
+            if (matchType === 'Exact') matchCount++;
+            else if (matchType === 'Partial') partialMatchCount++;
+            else noMatchCount++;
         }
 
-        // Find best match in target data
-        let bestMatch = null;
-        let bestSimilarity = 0;
-        let matchType = 'No Match';
+        if (onProgress) {
+            onProgress((i / sourceData.length) * 100);
+        }
 
-        for (let j = 1; j < targetData.length; j++) {
-            const targetRow = targetData[j];
-            if (!targetRow || !targetRow[targetColumnIndex]) continue;
-
-            const targetValue = String(targetRow[targetColumnIndex]).trim();
-            if (!targetValue) continue;
-
-            const similarity = calculateRowSimilarity(searchValues, targetValue, searchType, caseSensitive);
-
-            if (searchType === 'exact' && similarity === 1.0) {
-                bestMatch = targetValue;
-                bestSimilarity = similarity;
-                matchType = 'Exact';
-                break; // Found exact match, no need to continue
-            } else if (searchType === 'partial' && similarity >= similarityThreshold && similarity > bestSimilarity) {
-                bestMatch = targetValue;
-                bestSimilarity = similarity;
-                matchType = bestSimilarity === 1.0 ? 'Exact' : 'Partial';
+        if (i < sourceData.length) {
+            setTimeout(processBatch, 0);
+        } else {
+            if (onComplete) {
+                onComplete({
+                    data: results,
+                    summary: {
+                        totalSourceRecords: sourceData.length - 1,
+                        matchCount,
+                        partialMatchCount,
+                        noMatchCount,
+                        searchType,
+                        similarityThreshold,
+                        searchColumns: sourceColumnIndices.map(idx => XLSX.utils.encode_col(idx)),
+                        targetColumn: XLSX.utils.encode_col(targetColumnIndex)
+                    }
+                });
             }
         }
-
-        // Add result
-        const resultRow = [
-            i + 1,
-            ...sourceColumnIndices.map(colIndex => sourceRow[colIndex] || ''),
-            bestMatch || '',
-            Math.round(bestSimilarity * 100) + '%',
-            matchType
-        ];
-        results.push(resultRow);
-
-        // Update counters
-        if (matchType === 'Exact') matchCount++;
-        else if (matchType === 'Partial') partialMatchCount++;
-        else noMatchCount++;
     }
 
-    updateProgress(90, 'Finalizing results...');
-
-    // Store results and summary
-    window.searchResults = {
-        data: results,
-        summary: {
-            totalSourceRecords: sourceData.length - 1,
-            matchCount: matchCount,
-            partialMatchCount: partialMatchCount,
-            noMatchCount: noMatchCount,
-            searchType: searchType,
-            similarityThreshold: similarityThreshold,
-            searchColumns: searchColumns,
-            targetColumn: targetColumn
-        }
-    };
-
-    return window.searchResults;
+    processBatch();
 }
 
 function calculateRowSimilarity(searchValues, targetValue, searchType, caseSensitive) {
