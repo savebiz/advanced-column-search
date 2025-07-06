@@ -4,6 +4,50 @@ let searchTargetWorkbook = null;
 let advancedSearchInitialized = false;
 window.searchResults = null;
 
+// Batch processing state
+let batchProcessing = {
+    isActive: false,
+    isPaused: false,
+    cancelRequested: false,
+    params: null,
+    i: 1,
+    results: [],
+    matchCount: 0,
+    partialMatchCount: 0,
+    noMatchCount: 0,
+    totalRows: 0,
+    batchSize: 100,
+    headers: [],
+    onProgress: null,
+    onComplete: null
+};
+
+function showBatchControls(showCancel, showNextBatch) {
+    const controls = document.getElementById('batchControls');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const nextBatchBtn = document.getElementById('nextBatchBtn');
+    controls.style.display = (showCancel || showNextBatch) ? 'block' : 'none';
+    cancelBtn.style.display = showCancel ? 'inline-block' : 'none';
+    nextBatchBtn.style.display = showNextBatch ? 'inline-block' : 'none';
+}
+
+function resetBatchProcessingState() {
+    batchProcessing.isActive = false;
+    batchProcessing.isPaused = false;
+    batchProcessing.cancelRequested = false;
+    batchProcessing.params = null;
+    batchProcessing.i = 1;
+    batchProcessing.results = [];
+    batchProcessing.matchCount = 0;
+    batchProcessing.partialMatchCount = 0;
+    batchProcessing.noMatchCount = 0;
+    batchProcessing.totalRows = 0;
+    batchProcessing.headers = [];
+    batchProcessing.onProgress = null;
+    batchProcessing.onComplete = null;
+    showBatchControls(false, false);
+}
+
 // Initialize the application
 function initializeAdvancedSearch() {
     if (advancedSearchInitialized) {
@@ -392,255 +436,6 @@ function removeSearchColumn(button) {
     }
 }
 
-// Search functionality
-function performAdvancedSearch() {
-    // Validation
-    if (!searchSourceWorkbook || !searchTargetWorkbook) {
-        alert('Please select both source and target files.');
-        return;
-    }
-
-    const sourceSheet = document.getElementById('searchSourceSheet').value;
-    const targetSheet = document.getElementById('searchTargetSheet').value;
-    const targetColumn = document.getElementById('searchTargetColumn').value;
-
-    if (!sourceSheet || !targetSheet || !targetColumn) {
-        alert('Please select all required sheets and columns.');
-        return;
-    }
-
-    const searchColumns = Array.from(document.querySelectorAll('.search-column-select'))
-        .map(select => select.value)
-        .filter(value => value !== '');
-
-    if (searchColumns.length === 0) {
-        alert('Please select at least one search column.');
-        return;
-    }
-
-    // Get search configuration
-    const searchType = document.querySelector('input[name="searchType"]:checked').value;
-    const similarityThreshold = parseFloat(document.getElementById('similarityThreshold').value);
-    const caseSensitive = document.getElementById('searchCaseSensitive').checked;
-
-    // Show progress
-    showProgress();
-    updateProgress(0, 'Initializing search...');
-
-    // Extract data
-    const sourceData = XLSX.utils.sheet_to_json(searchSourceWorkbook.Sheets[sourceSheet], { header: 1 });
-    const targetData = XLSX.utils.sheet_to_json(searchTargetWorkbook.Sheets[targetSheet], { header: 1 });
-    const sourceColumnIndices = searchColumns.map(col => XLSX.utils.decode_col(col));
-    const targetColumnIndex = XLSX.utils.decode_col(targetColumn);
-
-    executeSearchInBatches({
-        sourceData,
-        targetData,
-        sourceColumnIndices,
-        targetColumnIndex,
-        searchType,
-        similarityThreshold,
-        caseSensitive,
-        onProgress: (percent) => {
-            updateProgress(percent, `Processing... ${Math.round(percent)}%`);
-        },
-        onComplete: (results) => {
-            displayResults(results);
-            updateProgress(100, 'Search completed successfully!');
-        }
-    });
-}
-
-function executeSearchInBatches(params) {
-    const {
-        sourceData, targetData, sourceColumnIndices, targetColumnIndex,
-        searchType, similarityThreshold, caseSensitive, onProgress, onComplete
-    } = params;
-
-    let i = 1;
-    const results = [];
-    const headers = ['Row', ...sourceColumnIndices.map(col => `Source_${col}`), 'Target_Value', 'Similarity_%', 'Match_Type'];
-    results.push(headers);
-
-    let matchCount = 0, partialMatchCount = 0, noMatchCount = 0;
-    const totalRows = sourceData.length - 1;
-
-    function processBatch() {
-        const batchSize = 100;
-        const end = Math.min(i + batchSize, sourceData.length);
-
-        for (; i < end; i++) {
-            const sourceRow = sourceData[i];
-            if (!sourceRow) continue;
-
-            // Extract search values
-            const searchValues = sourceColumnIndices.map(colIndex =>
-                sourceRow[colIndex] ? String(sourceRow[colIndex]).trim() : ''
-            ).filter(value => value !== '');
-
-            if (searchValues.length === 0) {
-                // No valid search values
-                const resultRow = [
-                    i + 1,
-                    ...sourceColumnIndices.map(colIndex => sourceRow[colIndex] || ''),
-                    '',
-                    '0%',
-                    'No Match'
-                ];
-                results.push(resultRow);
-                noMatchCount++;
-                continue;
-            }
-
-            // Find best match in target data
-            let bestMatch = null;
-            let bestSimilarity = 0;
-            let matchType = 'No Match';
-
-            for (let j = 1; j < targetData.length; j++) {
-                const targetRow = targetData[j];
-                if (!targetRow || !targetRow[targetColumnIndex]) continue;
-
-                const targetValue = String(targetRow[targetColumnIndex]).trim();
-                if (!targetValue) continue;
-
-                const similarity = calculateRowSimilarity(searchValues, targetValue, searchType, caseSensitive);
-
-                if (searchType === 'exact' && similarity === 1.0) {
-                    bestMatch = targetValue;
-                    bestSimilarity = similarity;
-                    matchType = 'Exact';
-                    break; // Found exact match, no need to continue
-                } else if (searchType === 'partial' && similarity >= similarityThreshold && similarity > bestSimilarity) {
-                    bestMatch = targetValue;
-                    bestSimilarity = similarity;
-                    matchType = bestSimilarity === 1.0 ? 'Exact' : 'Partial';
-                }
-            }
-
-            // Add result
-            const resultRow = [
-                i + 1,
-                ...sourceColumnIndices.map(colIndex => sourceRow[colIndex] || ''),
-                bestMatch || '',
-                Math.round(bestSimilarity * 100) + '%',
-                matchType
-            ];
-            results.push(resultRow);
-
-            // Update counters
-            if (matchType === 'Exact') matchCount++;
-            else if (matchType === 'Partial') partialMatchCount++;
-            else noMatchCount++;
-        }
-
-        if (onProgress) {
-            onProgress((i / sourceData.length) * 100);
-        }
-
-        if (i < sourceData.length) {
-            setTimeout(processBatch, 0);
-        } else {
-            if (onComplete) {
-                onComplete({
-                    data: results,
-                    summary: {
-                        totalSourceRecords: sourceData.length - 1,
-                        matchCount,
-                        partialMatchCount,
-                        noMatchCount,
-                        searchType,
-                        similarityThreshold,
-                        searchColumns: sourceColumnIndices.map(idx => XLSX.utils.encode_col(idx)),
-                        targetColumn: XLSX.utils.encode_col(targetColumnIndex)
-                    }
-                });
-            }
-        }
-    }
-
-    processBatch();
-}
-
-function calculateRowSimilarity(searchValues, targetValue, searchType, caseSensitive) {
-    if (searchType === 'exact') {
-        // For exact match, check if all search values are found in target
-        const targetStr = caseSensitive ? targetValue : targetValue.toLowerCase();
-        for (const searchValue of searchValues) {
-            if (!searchValue) continue;
-            const searchStr = caseSensitive ? searchValue : searchValue.toLowerCase();
-            if (!targetStr.includes(searchStr)) {
-                return 0;
-            }
-        }
-        return 1.0;
-    } else {
-        // For partial match, calculate average similarity
-        let totalSimilarity = 0;
-        let validValues = 0;
-        
-        for (const searchValue of searchValues) {
-            if (!searchValue) continue;
-            const similarity = calculateSimilarity(searchValue, targetValue, caseSensitive);
-            totalSimilarity += similarity;
-            validValues++;
-        }
-        
-        return validValues > 0 ? totalSimilarity / validValues : 0;
-    }
-}
-
-function calculateSimilarity(str1, str2, caseSensitive = false) {
-    if (!str1 || !str2) return 0;
-    
-    const s1 = caseSensitive ? str1 : str1.toLowerCase();
-    const s2 = caseSensitive ? str2 : str2.toLowerCase();
-    
-    // If strings are identical, return 1.0
-    if (s1 === s2) return 1.0;
-    
-    // If one string contains the other, return high similarity
-    if (s1.includes(s2) || s2.includes(s1)) {
-        return 0.9;
-    }
-    
-    const longer = s1.length > s2.length ? s1 : s2;
-    const shorter = s1.length > s2.length ? s2 : s1;
-    
-    if (longer.length === 0) return 1.0;
-    
-    const editDistance = levenshteinDistance(longer, shorter);
-    return (longer.length - editDistance) / longer.length;
-}
-
-function levenshteinDistance(str1, str2) {
-    const matrix = [];
-    
-    for (let i = 0; i <= str2.length; i++) {
-        matrix[i] = [i];
-    }
-    
-    for (let j = 0; j <= str1.length; j++) {
-        matrix[0][j] = j;
-    }
-    
-    for (let i = 1; i <= str2.length; i++) {
-        for (let j = 1; j <= str1.length; j++) {
-            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-                matrix[i][j] = matrix[i - 1][j - 1];
-            } else {
-                matrix[i][j] = Math.min(
-                    matrix[i - 1][j - 1] + 1,
-                    matrix[i][j - 1] + 1,
-                    matrix[i - 1][j] + 1
-                );
-            }
-        }
-    }
-    
-    return matrix[str2.length][str1.length];
-}
-
 // UI Management functions
 function showProgress() {
     document.getElementById('progressContainer').style.display = 'block';
@@ -742,6 +537,107 @@ function exportResults() {
     }
 }
 
+function calculateRowSimilarity(searchValues, targetValue, searchType, caseSensitive) {
+    if (searchType === 'exact') {
+        // For exact match, check if all search values are found in target
+        const targetStr = caseSensitive ? targetValue : targetValue.toLowerCase();
+        for (const searchValue of searchValues) {
+            if (!searchValue) continue;
+            const searchStr = caseSensitive ? searchValue : searchValue.toLowerCase();
+            if (!targetStr.includes(searchStr)) {
+                return 0;
+            }
+        }
+        return 1.0;
+    } else {
+        // For partial match, calculate average similarity
+        let totalSimilarity = 0;
+        let validValues = 0;
+        
+        for (const searchValue of searchValues) {
+            if (!searchValue) continue;
+            const similarity = calculateSimilarity(searchValue, targetValue, caseSensitive);
+            totalSimilarity += similarity;
+            validValues++;
+        }
+        
+        return validValues > 0 ? totalSimilarity / validValues : 0;
+    }
+}
+
+function calculateSimilarity(str1, str2, caseSensitive = false) {
+    if (!str1 || !str2) return 0;
+    
+    const s1 = caseSensitive ? str1 : str1.toLowerCase();
+    const s2 = caseSensitive ? str2 : str2.toLowerCase();
+    
+    // If strings are identical, return 1.0
+    if (s1 === s2) return 1.0;
+    
+    // If one string contains the other, return high similarity
+    if (s1.includes(s2) || s2.includes(s1)) {
+        return 0.9;
+    }
+    
+    const longer = s1.length > s2.length ? s1 : s2;
+    const shorter = s1.length > s2.length ? s2 : s1;
+    
+    if (longer.length === 0) return 1.0;
+    
+    const editDistance = levenshteinDistance(longer, shorter);
+    return (longer.length - editDistance) / longer.length;
+}
+
+function levenshteinDistance(str1, str2) {
+    const matrix = [];
+    
+    for (let i = 0; i <= str2.length; i++) {
+        matrix[i] = [i];
+    }
+    
+    for (let j = 0; j <= str1.length; j++) {
+        matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= str2.length; i++) {
+        for (let j = 1; j <= str1.length; j++) {
+            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+    
+    return matrix[str2.length][str1.length];
+}
+
+// Cancel and next batch event handlers
+function setupBatchControlHandlers() {
+    const cancelBtn = document.getElementById('cancelBtn');
+    const nextBatchBtn = document.getElementById('nextBatchBtn');
+    if (cancelBtn) {
+        cancelBtn.onclick = function() {
+            batchProcessing.cancelRequested = true;
+            hideProgress();
+            resetBatchProcessingState();
+        };
+    }
+    if (nextBatchBtn) {
+        nextBatchBtn.onclick = function() {
+            if (batchProcessing.isPaused && batchProcessing.isActive && !batchProcessing.cancelRequested) {
+                batchProcessing.isPaused = false;
+                showBatchControls(true, false);
+                setTimeout(processBatchInternal, 0);
+            }
+        };
+    }
+}
+
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', function() {
     initializeAdvancedSearch();
@@ -751,6 +647,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize similarity display
     handleSimilarityChange({ target: { value: 0.8 } });
+    setupBatchControlHandlers();
 });
 
 // Test functions for debugging
