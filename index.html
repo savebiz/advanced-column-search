@@ -28,6 +28,8 @@
                 <select id="taskSelect" class="task-dropdown">
                     <option value="">Choose a task...</option>
                     <option value="advanced-search" selected>Advanced Column Search</option>
+                    <option value="duplicate-identifier">Duplicate Row Identifier</option>
+                    <option value="box-validator">Box Number Sequence Validator</option>
                 </select>
             </div>
 
@@ -177,6 +179,132 @@
                         <button id="exportSearchBtn" class="btn btn-export" style="display: none;">Export Results</button>
                     </div>
                     <div id="summaryStats" class="summary-stats"></div>
+                </div>
+            </div>
+
+            <!-- Duplicate Row Identifier -->
+            <div id="duplicate-identifier" class="task-content">
+                <h2>🔄 Duplicate Row Identifier</h2>
+                <p class="alert alert-info">Identify exact duplicate rows based on selected columns. All duplicate rows will be marked with "DUPLICATE".</p>
+                
+                <!-- File Upload Section -->
+                <div class="section">
+                    <h3>📁 File Selection</h3>
+                    <div class="form-group">
+                        <label>Excel File:</label>
+                        <div class="file-input">
+                            <input type="file" id="duplicateFile" accept=".xlsx,.xls" />
+                            <label for="duplicateFile" class="file-input-label">
+                                📁 Choose Excel File
+                            </label>
+                        </div>
+                        <div class="file-info" id="duplicateFileInfo">No file selected</div>
+                    </div>
+                </div>
+
+                <!-- Sheet and Column Selection -->
+                <div class="section">
+                    <h3>📊 Sheet and Column Configuration</h3>
+                    <div class="form-group">
+                        <label>Sheet:</label>
+                        <select id="duplicateSheet" class="form-control">
+                            <option value="">Select sheet...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Columns to Check for Duplicates:</label>
+                        <div id="duplicateColumnsContainer" class="search-columns-container">
+                            <div class="search-column-item">
+                                <select class="duplicate-column-select form-control">
+                                    <option value="">Select column...</option>
+                                </select>
+                                <button type="button" class="btn btn-remove" onclick="removeDuplicateColumn(this)">Remove</button>
+                            </div>
+                        </div>
+                        <button type="button" id="addDuplicateColumn" class="btn btn-secondary">
+                            <span class="add-icon">+</span> Add Column
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <button id="performDuplicateBtn" class="btn btn-primary">
+                    🔄 Find Duplicates
+                </button>
+                
+                <!-- Progress Section -->
+                <div id="duplicateProgressContainer" class="progress-bar" style="display: none;">
+                    <div class="progress-fill" id="duplicateProgressFill"></div>
+                </div>
+                <div id="duplicateProgressText" class="loading-text" style="display: none;">Processing...</div>
+
+                <!-- Results Summary -->
+                <div id="duplicateSummary" class="search-summary" style="display: none;">
+                    <div class="results-header">
+                        <h3>Duplicate Analysis Results</h3>
+                        <button id="exportDuplicateBtn" class="btn btn-export" style="display: none;">Export Results</button>
+                    </div>
+                    <div id="duplicateSummaryStats" class="summary-stats"></div>
+                </div>
+            </div>
+
+            <!-- Box Number Sequence Validator -->
+            <div id="box-validator" class="task-content">
+                <h2>📦 Box Number Sequence Validator</h2>
+                <p class="alert alert-info">Identify broken box number sequences in inventory files. Detects rows where box numbers don't follow the expected pattern.</p>
+                
+                <!-- File Upload Section -->
+                <div class="section">
+                    <h3>📁 File Selection</h3>
+                    <div class="form-group">
+                        <label>Excel File:</label>
+                        <div class="file-input">
+                            <input type="file" id="boxFile" accept=".xlsx,.xls" />
+                            <label for="boxFile" class="file-input-label">
+                                📁 Choose Excel File
+                            </label>
+                        </div>
+                        <div class="file-info" id="boxFileInfo">No file selected</div>
+                    </div>
+                </div>
+
+                <!-- Sheet and Column Selection -->
+                <div class="section">
+                    <h3>📊 Sheet and Column Configuration</h3>
+                    <div class="form-group">
+                        <label>Sheet:</label>
+                        <select id="boxSheet" class="form-control">
+                            <option value="">Select sheet...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Box Number Column:</label>
+                        <select id="boxNumberColumn" class="form-control">
+                            <option value="">Select column...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <button id="performBoxBtn" class="btn btn-primary">
+                    📦 Validate Box Sequence
+                </button>
+                
+                <!-- Progress Section -->
+                <div id="boxProgressContainer" class="progress-bar" style="display: none;">
+                    <div class="progress-fill" id="boxProgressFill"></div>
+                </div>
+                <div id="boxProgressText" class="loading-text" style="display: none;">Processing...</div>
+
+                <!-- Results Summary -->
+                <div id="boxSummary" class="search-summary" style="display: none;">
+                    <div class="results-header">
+                        <h3>Box Sequence Validation Results</h3>
+                        <button id="exportBoxBtn" class="btn btn-export" style="display: none;">Export Results</button>
+                    </div>
+                    <div id="boxSummaryStats" class="summary-stats"></div>
                 </div>
             </div>
         </div>

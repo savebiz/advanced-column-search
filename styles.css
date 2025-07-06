@@ -89,9 +89,9 @@ body {
     box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
 }
 
+/* Task Content Management */
 .task-content {
     display: none;
-    animation: fadeIn 0.3s ease;
 }
 
 .task-content.active {
@@ -854,4 +854,56 @@ body {
     .form-control {
         border: 2px solid #000;
     }
+} 
+
+/* Duplicate and Box Validator specific styles */
+#duplicate-identifier .search-columns-container,
+#box-validator .search-columns-container {
+    margin-bottom: 15px;
+}
+
+#duplicate-identifier .search-column-item,
+#box-validator .search-column-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+#duplicate-identifier .duplicate-column-select,
+#box-validator .duplicate-column-select {
+    flex: 1;
+}
+
+/* Progress bars for different tasks */
+#duplicateProgressContainer,
+#boxProgressContainer {
+    margin: 20px 0;
+}
+
+#duplicateProgressFill,
+#boxProgressFill {
+    height: 100%;
+    background: linear-gradient(90deg, #007bff, #0056b3);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+/* Results styling for new tasks */
+#duplicateSummary,
+#boxSummary {
+    margin-top: 20px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+#duplicateSummaryStats,
+#boxSummaryStats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
 } 

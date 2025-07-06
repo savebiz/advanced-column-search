@@ -4,6 +4,16 @@ let searchTargetWorkbook = null;
 let advancedSearchInitialized = false;
 window.searchResults = null;
 
+// Duplicate identifier variables
+let duplicateWorkbook = null;
+let duplicateInitialized = false;
+window.duplicateResults = null;
+
+// Box validator variables
+let boxWorkbook = null;
+let boxInitialized = false;
+window.boxResults = null;
+
 // Batch processing state
 let batchProcessing = {
     isActive: false,
@@ -262,6 +272,65 @@ function initializeAdvancedSearch() {
     console.log('[AdvancedSearch] Initialization complete');
 }
 
+// Initialize Duplicate Identifier
+function initializeDuplicateIdentifier() {
+    if (duplicateInitialized) {
+        console.log('[DuplicateIdentifier] Already initialized, skipping...');
+        return;
+    }
+
+    // Element existence verification
+    const duplicateFileInput = document.getElementById('duplicateFile');
+    
+    if (!duplicateFileInput) {
+        console.error('[DuplicateIdentifier] Required elements not found');
+        return;
+    }
+
+    // Event listener attachment
+    duplicateFileInput.addEventListener('change', handleDuplicateFileChange);
+
+    // Sheet change handler
+    document.getElementById('duplicateSheet').addEventListener('change', handleDuplicateSheetChange);
+
+    // Dynamic column management
+    document.getElementById('addDuplicateColumn').addEventListener('click', addDuplicateColumn);
+    document.getElementById('performDuplicateBtn').addEventListener('click', performDuplicateAnalysis);
+    document.getElementById('exportDuplicateBtn').addEventListener('click', exportDuplicateResults);
+
+    duplicateInitialized = true;
+    console.log('[DuplicateIdentifier] Initialization complete');
+}
+
+// Initialize Box Validator
+function initializeBoxValidator() {
+    if (boxInitialized) {
+        console.log('[BoxValidator] Already initialized, skipping...');
+        return;
+    }
+
+    // Element existence verification
+    const boxFileInput = document.getElementById('boxFile');
+    
+    if (!boxFileInput) {
+        console.error('[BoxValidator] Required elements not found');
+        return;
+    }
+
+    // Event listener attachment
+    boxFileInput.addEventListener('change', handleBoxFileChange);
+
+    // Sheet change handler
+    document.getElementById('boxSheet').addEventListener('change', handleBoxSheetChange);
+
+    // Action button
+    document.getElementById('performBoxBtn').addEventListener('click', performBoxValidation);
+    document.getElementById('exportBoxBtn').addEventListener('click', exportBoxResults);
+
+    boxInitialized = true;
+    console.log('[BoxValidator] Initialization complete');
+}
+
 // Task selector functionality
 function handleTaskChange(event) {
     const selectedTask = event.target.value;
@@ -277,6 +346,15 @@ function handleTaskChange(event) {
         const selectedContent = document.getElementById(selectedTask);
         if (selectedContent) {
             selectedContent.classList.add('active');
+            
+            // Initialize the selected task
+            if (selectedTask === 'advanced-search' && !advancedSearchInitialized) {
+                initializeAdvancedSearch();
+            } else if (selectedTask === 'duplicate-identifier' && !duplicateInitialized) {
+                initializeDuplicateIdentifier();
+            } else if (selectedTask === 'box-validator' && !boxInitialized) {
+                initializeBoxValidator();
+            }
         }
     }
 }
@@ -633,6 +711,198 @@ function removeSearchColumn(button) {
     }
 }
 
+// Duplicate Identifier file handling
+function handleDuplicateFileChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    console.log('[DuplicateIdentifier] File selected:', file.name);
+    
+    // Update UI
+    document.getElementById('duplicateFileInfo').textContent = `${file.name} (${formatFileSize(file.size)})`;
+    updateFileInputLabel('duplicateFile', true);
+
+    // Validate file
+    if (!validateFile(file)) return;
+
+    // Process Excel file
+    processDuplicateExcelFile(file);
+}
+
+function processDuplicateExcelFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+                throw new Error('No sheets found in the Excel file. The file may be corrupted or empty.');
+            }
+
+            duplicateWorkbook = workbook;
+            populateSheetDropdown(workbook, 'duplicateSheet');
+        } catch (error) {
+            console.error('[DuplicateIdentifier] Error processing file:', error);
+            alert(`Error processing the Excel file: ${error.message}`);
+        }
+    };
+    
+    reader.onerror = function() {
+        alert('Error reading the file. Please try again.');
+    };
+    
+    reader.readAsArrayBuffer(file);
+}
+
+function handleDuplicateSheetChange(event) {
+    const sheetName = event.target.value;
+    if (duplicateWorkbook && sheetName) {
+        populateDuplicateColumns(duplicateWorkbook, sheetName);
+    }
+}
+
+function populateDuplicateColumns(workbook, sheetName) {
+    const selects = document.querySelectorAll('.duplicate-column-select');
+    selects.forEach(select => {
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">Select column...</option>';
+        
+        if (!sheetName) return;
+        
+        try {
+            const sheet = workbook.Sheets[sheetName];
+            if (sheet && sheet['!ref']) {
+                const range = XLSX.utils.decode_range(sheet['!ref']);
+                
+                for (let col = range.s.c; col <= range.e.c; col++) {
+                    const colLetter = XLSX.utils.encode_col(col);
+                    const cellAddress = colLetter + '1';
+                    const headerCell = sheet[cellAddress];
+                    const headerValue = headerCell ? String(headerCell.v) : `Column ${colLetter}`;
+                    
+                    const option = document.createElement('option');
+                    option.value = colLetter;
+                    option.textContent = `${colLetter}: ${headerValue}`;
+                    if (colLetter === currentValue) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                }
+            }
+        } catch (error) {
+            console.error('[populateDuplicateColumns] Error:', error);
+        }
+    });
+}
+
+// Duplicate Identifier column management
+function addDuplicateColumn() {
+    const container = document.getElementById('duplicateColumnsContainer');
+    const newItem = document.createElement('div');
+    newItem.className = 'search-column-item';
+    
+    const select = document.createElement('select');
+    select.className = 'duplicate-column-select form-control';
+    select.innerHTML = '<option value="">Select column...</option>';
+    
+    // Populate with current sheet columns if available
+    const sheetName = document.getElementById('duplicateSheet').value;
+    if (duplicateWorkbook && sheetName) {
+        try {
+            const sheet = duplicateWorkbook.Sheets[sheetName];
+            if (sheet && sheet['!ref']) {
+                const range = XLSX.utils.decode_range(sheet['!ref']);
+                
+                for (let col = range.s.c; col <= range.e.c; col++) {
+                    const colLetter = XLSX.utils.encode_col(col);
+                    const cellAddress = colLetter + '1';
+                    const headerCell = sheet[cellAddress];
+                    const headerValue = headerCell ? String(headerCell.v) : `Column ${colLetter}`;
+                    
+                    const option = document.createElement('option');
+                    option.value = colLetter;
+                    option.textContent = `${colLetter}: ${headerValue}`;
+                    select.appendChild(option);
+                }
+            }
+        } catch (error) {
+            console.error('[addDuplicateColumn] Error populating columns:', error);
+        }
+    }
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-remove';
+    removeBtn.textContent = 'Remove';
+    removeBtn.onclick = function() { removeDuplicateColumn(this); };
+    
+    newItem.appendChild(select);
+    newItem.appendChild(removeBtn);
+    container.appendChild(newItem);
+}
+
+function removeDuplicateColumn(button) {
+    const container = document.getElementById('duplicateColumnsContainer');
+    const items = container.querySelectorAll('.search-column-item');
+    if (items.length > 1) {
+        button.parentElement.remove();
+    } else {
+        alert('At least one column is required for duplicate checking.');
+    }
+}
+
+// Box Validator file handling
+function handleBoxFileChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    console.log('[BoxValidator] File selected:', file.name);
+    
+    // Update UI
+    document.getElementById('boxFileInfo').textContent = `${file.name} (${formatFileSize(file.size)})`;
+    updateFileInputLabel('boxFile', true);
+
+    // Validate file
+    if (!validateFile(file)) return;
+
+    // Process Excel file
+    processBoxExcelFile(file);
+}
+
+function processBoxExcelFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+                throw new Error('No sheets found in the Excel file. The file may be corrupted or empty.');
+            }
+
+            boxWorkbook = workbook;
+            populateSheetDropdown(workbook, 'boxSheet');
+        } catch (error) {
+            console.error('[BoxValidator] Error processing file:', error);
+            alert(`Error processing the Excel file: ${error.message}`);
+        }
+    };
+    
+    reader.onerror = function() {
+        alert('Error reading the file. Please try again.');
+    };
+    
+    reader.readAsArrayBuffer(file);
+}
+
+function handleBoxSheetChange(event) {
+    const sheetName = event.target.value;
+    if (boxWorkbook && sheetName) {
+        populateColumnDropdown(boxWorkbook, sheetName, 'boxNumberColumn');
+    }
+}
+
 // UI Management functions
 function showProgress() {
     document.getElementById('progressContainer').style.display = 'block';
@@ -942,6 +1212,475 @@ function performAdvancedSearch() {
         customMatchCount,
         allSourceColumns
     });
+}
+
+// Duplicate Analysis Functions
+function performDuplicateAnalysis() {
+    // Validate workbook and selections
+    if (!duplicateWorkbook) {
+        alert('Please upload an Excel file.');
+        return;
+    }
+    
+    const sheetName = document.getElementById('duplicateSheet').value;
+    if (!sheetName) {
+        alert('Please select a sheet.');
+        return;
+    }
+    
+    // Collect columns to check
+    const columnSelects = document.querySelectorAll('.duplicate-column-select');
+    const columnLetters = Array.from(columnSelects).map(sel => sel.value).filter(Boolean);
+    if (columnLetters.length === 0) {
+        alert('Please select at least one column to check for duplicates.');
+        return;
+    }
+    
+    // Prepare data
+    const sheet = duplicateWorkbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    
+    if (data.length <= 1) {
+        alert('The selected sheet has no data or only headers.');
+        return;
+    }
+    
+    // Map column letters to indices
+    const columnIndices = columnLetters.map(letter => XLSX.utils.decode_col(letter));
+    
+    // Show progress
+    showDuplicateProgress();
+    updateDuplicateProgress(0, 'Starting duplicate analysis...');
+    
+    // Perform duplicate analysis
+    setTimeout(() => {
+        const results = analyzeDuplicates(data, columnIndices);
+        displayDuplicateResults(results);
+    }, 100);
+}
+
+function analyzeDuplicates(data, columnIndices) {
+    const results = [];
+    const duplicateMap = new Map(); // Maps row key to array of row indices
+    const duplicateRows = new Set(); // Set of row indices that are duplicates
+    
+    // Create headers row
+    const headers = ['Row', 'Status'];
+    for (let col = 0; col < data[0].length; col++) {
+        headers.push(`Column_${XLSX.utils.encode_col(col)}`);
+    }
+    results.push(headers);
+    
+    // Analyze each row
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row) continue;
+        
+        // Create key from selected columns
+        const key = columnIndices.map(colIndex => 
+            row[colIndex] ? String(row[colIndex]).trim() : ''
+        ).join('|');
+        
+        // Skip empty keys
+        if (!key || key.split('|').every(val => !val)) {
+            const resultRow = [i + 1, 'No Data', ...row.map(cell => cell || '')];
+            results.push(resultRow);
+            continue;
+        }
+        
+        // Check if this key already exists
+        if (duplicateMap.has(key)) {
+            // This is a duplicate
+            duplicateRows.add(i);
+            duplicateMap.get(key).push(i);
+        } else {
+            // First occurrence of this key
+            duplicateMap.set(key, [i]);
+        }
+        
+        // Add row to results
+        const status = duplicateMap.get(key).length > 1 ? 'DUPLICATE' : 'UNIQUE';
+        const resultRow = [i + 1, status, ...row.map(cell => cell || '')];
+        results.push(resultRow);
+        
+        // Update progress
+        if (i % 100 === 0) {
+            updateDuplicateProgress((i / data.length) * 100, `Analyzing row ${i}...`);
+        }
+    }
+    
+    // Mark all rows in duplicate groups as DUPLICATE
+    for (const [key, rowIndices] of duplicateMap) {
+        if (rowIndices.length > 1) {
+            for (const rowIndex of rowIndices) {
+                results[rowIndex][1] = 'DUPLICATE'; // Update status column
+            }
+        }
+    }
+    
+    // Calculate statistics
+    const totalRows = data.length - 1;
+    const duplicateCount = duplicateRows.size;
+    const uniqueCount = totalRows - duplicateCount;
+    const duplicateGroups = Array.from(duplicateMap.values()).filter(indices => indices.length > 1).length;
+    
+    return {
+        data: results,
+        summary: {
+            totalRows,
+            duplicateCount,
+            uniqueCount,
+            duplicateGroups,
+            checkedColumns: columnIndices.map(idx => XLSX.utils.encode_col(idx))
+        }
+    };
+}
+
+function displayDuplicateResults(results) {
+    window.duplicateResults = results;
+    const summary = results.summary;
+    
+    // Create summary stats
+    const statsHtml = `
+        <div class="stat-card">
+            <div class="stat-number">${summary.totalRows}</div>
+            <div class="stat-label">Total Rows</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">${summary.uniqueCount}</div>
+            <div class="stat-label">Unique Rows</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">${summary.duplicateCount}</div>
+            <div class="stat-label">Duplicate Rows</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">${summary.duplicateGroups}</div>
+            <div class="stat-label">Duplicate Groups</div>
+        </div>
+    `;
+    
+    document.getElementById('duplicateSummaryStats').innerHTML = statsHtml;
+    document.getElementById('duplicateSummary').style.display = 'block';
+    document.getElementById('exportDuplicateBtn').style.display = 'inline-flex';
+    
+    setTimeout(() => {
+        hideDuplicateProgress();
+    }, 1000);
+}
+
+function exportDuplicateResults() {
+    if (window.duplicateResults) {
+        try {
+            const newWorkbook = XLSX.utils.book_new();
+            
+            // Create main results sheet
+            const duplicateSheet = XLSX.utils.aoa_to_sheet(window.duplicateResults.data);
+            XLSX.utils.book_append_sheet(newWorkbook, duplicateSheet, 'Duplicate Analysis');
+            
+            // Create summary sheet
+            const summary = window.duplicateResults.summary;
+            const summaryData = [
+                ['Duplicate Analysis Summary'],
+                [''],
+                ['Total Rows', summary.totalRows],
+                ['Unique Rows', summary.uniqueCount],
+                ['Duplicate Rows', summary.duplicateCount],
+                ['Duplicate Groups', summary.duplicateGroups],
+                [''],
+                ['Configuration'],
+                ['Checked Columns', summary.checkedColumns.join(', ')],
+                [''],
+                ['Generated on', new Date().toLocaleString()]
+            ];
+            
+            const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(newWorkbook, summarySheet, 'Summary');
+            
+            const filename = `duplicate_analysis_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(newWorkbook, filename);
+            
+        } catch (error) {
+            console.error('[exportDuplicateResults] Error:', error);
+            alert('Error exporting results: ' + error.message);
+        }
+    } else {
+        alert('No duplicate analysis results available for export');
+    }
+}
+
+// Box Sequence Validation Functions
+function performBoxValidation() {
+    // Validate workbook and selections
+    if (!boxWorkbook) {
+        alert('Please upload an Excel file.');
+        return;
+    }
+    
+    const sheetName = document.getElementById('boxSheet').value;
+    if (!sheetName) {
+        alert('Please select a sheet.');
+        return;
+    }
+    
+    const boxColumnLetter = document.getElementById('boxNumberColumn').value;
+    if (!boxColumnLetter) {
+        alert('Please select a box number column.');
+        return;
+    }
+    
+    // Prepare data
+    const sheet = boxWorkbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    
+    if (data.length <= 1) {
+        alert('The selected sheet has no data or only headers.');
+        return;
+    }
+    
+    // Map column letter to index
+    const boxColumnIndex = XLSX.utils.decode_col(boxColumnLetter);
+    
+    // Show progress
+    showBoxProgress();
+    updateBoxProgress(0, 'Starting box sequence validation...');
+    
+    // Perform box validation
+    setTimeout(() => {
+        const results = validateBoxSequence(data, boxColumnIndex);
+        displayBoxResults(results);
+    }, 100);
+}
+
+function validateBoxSequence(data, boxColumnIndex) {
+    const results = [];
+    const issues = [];
+    let currentBox = null;
+    let expectedBox = null;
+    let rowInBlock = 0;
+    
+    // Create headers row
+    const headers = ['Row', 'Box Number', 'Status', 'Issue Description'];
+    for (let col = 0; col < data[0].length; col++) {
+        headers.push(`Column_${XLSX.utils.encode_col(col)}`);
+    }
+    results.push(headers);
+    
+    // Analyze each row
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row) continue;
+        
+        const boxNumber = row[boxColumnIndex] ? String(row[boxColumnIndex]).trim() : '';
+        let status = 'OK';
+        let issueDescription = '';
+        
+        // Check if row is empty (separator)
+        const isEmptyRow = row.every(cell => !cell || String(cell).trim() === '');
+        
+        if (isEmptyRow) {
+            // Empty row - reset block tracking
+            currentBox = null;
+            expectedBox = null;
+            rowInBlock = 0;
+            status = 'SEPARATOR';
+            issueDescription = 'Empty row separator';
+        } else if (boxNumber) {
+            // Row has box number
+            if (currentBox === null) {
+                // Start of new block
+                currentBox = boxNumber;
+                expectedBox = boxNumber;
+                rowInBlock = 1;
+            } else {
+                // Continuation of block
+                rowInBlock++;
+                
+                if (boxNumber !== expectedBox) {
+                    // Box number doesn't match expected
+                    status = 'ISSUE';
+                    issueDescription = `Expected box ${expectedBox}, found ${boxNumber}`;
+                    issues.push({
+                        row: i + 1,
+                        expected: expectedBox,
+                        found: boxNumber,
+                        description: issueDescription
+                    });
+                }
+            }
+        } else {
+            // Row has no box number but is not empty
+            if (currentBox !== null) {
+                // Should have box number in this block
+                status = 'ISSUE';
+                issueDescription = `Missing box number in block ${currentBox}`;
+                issues.push({
+                    row: i + 1,
+                    expected: currentBox,
+                    found: 'MISSING',
+                    description: issueDescription
+                });
+            }
+        }
+        
+        // Add row to results
+        const resultRow = [i + 1, boxNumber || '', status, issueDescription, ...row.map(cell => cell || '')];
+        results.push(resultRow);
+        
+        // Update progress
+        if (i % 100 === 0) {
+            updateBoxProgress((i / data.length) * 100, `Validating row ${i}...`);
+        }
+    }
+    
+    // Calculate statistics
+    const totalRows = data.length - 1;
+    const issueCount = issues.length;
+    const okCount = totalRows - issueCount;
+    
+    return {
+        data: results,
+        summary: {
+            totalRows,
+            issueCount,
+            okCount,
+            boxColumn: XLSX.utils.encode_col(boxColumnIndex),
+            issues: issues
+        }
+    };
+}
+
+function displayBoxResults(results) {
+    window.boxResults = results;
+    const summary = results.summary;
+    
+    // Create summary stats
+    const statsHtml = `
+        <div class="stat-card">
+            <div class="stat-number">${summary.totalRows}</div>
+            <div class="stat-label">Total Rows</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">${summary.okCount}</div>
+            <div class="stat-label">Valid Rows</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">${summary.issueCount}</div>
+            <div class="stat-label">Issues Found</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">${summary.boxColumn}</div>
+            <div class="stat-label">Box Column</div>
+        </div>
+    `;
+    
+    document.getElementById('boxSummaryStats').innerHTML = statsHtml;
+    document.getElementById('boxSummary').style.display = 'block';
+    document.getElementById('exportBoxBtn').style.display = 'inline-flex';
+    
+    setTimeout(() => {
+        hideBoxProgress();
+    }, 1000);
+}
+
+function exportBoxResults() {
+    if (window.boxResults) {
+        try {
+            const newWorkbook = XLSX.utils.book_new();
+            
+            // Create main results sheet
+            const boxSheet = XLSX.utils.aoa_to_sheet(window.boxResults.data);
+            XLSX.utils.book_append_sheet(newWorkbook, boxSheet, 'Box Validation');
+            
+            // Create summary sheet
+            const summary = window.boxResults.summary;
+            const summaryData = [
+                ['Box Sequence Validation Summary'],
+                [''],
+                ['Total Rows', summary.totalRows],
+                ['Valid Rows', summary.okCount],
+                ['Issues Found', summary.issueCount],
+                ['Box Column', summary.boxColumn],
+                [''],
+                ['Issues Details']
+            ];
+            
+            // Add issue details
+            if (summary.issues.length > 0) {
+                summaryData.push(['Row', 'Expected', 'Found', 'Description']);
+                summary.issues.forEach(issue => {
+                    summaryData.push([issue.row, issue.expected, issue.found, issue.description]);
+                });
+            } else {
+                summaryData.push(['No issues found']);
+            }
+            
+            summaryData.push(['']);
+            summaryData.push(['Generated on', new Date().toLocaleString()]);
+            
+            const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(newWorkbook, summarySheet, 'Summary');
+            
+            const filename = `box_validation_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(newWorkbook, filename);
+            
+        } catch (error) {
+            console.error('[exportBoxResults] Error:', error);
+            alert('Error exporting results: ' + error.message);
+        }
+    } else {
+        alert('No box validation results available for export');
+    }
+}
+
+// Progress Management for Duplicate Identifier
+function showDuplicateProgress() {
+    document.getElementById('duplicateProgressContainer').style.display = 'block';
+    document.getElementById('duplicateProgressText').style.display = 'block';
+    document.getElementById('duplicateSummary').style.display = 'none';
+    document.getElementById('exportDuplicateBtn').style.display = 'none';
+}
+
+function hideDuplicateProgress() {
+    document.getElementById('duplicateProgressContainer').style.display = 'none';
+    document.getElementById('duplicateProgressText').style.display = 'none';
+}
+
+function updateDuplicateProgress(percentage, message) {
+    const progressFill = document.getElementById('duplicateProgressFill');
+    const progressText = document.getElementById('duplicateProgressText');
+    
+    if (progressFill) {
+        progressFill.style.width = `${percentage}%`;
+    }
+    if (progressText) {
+        progressText.textContent = message || 'Processing...';
+    }
+}
+
+// Progress Management for Box Validator
+function showBoxProgress() {
+    document.getElementById('boxProgressContainer').style.display = 'block';
+    document.getElementById('boxProgressText').style.display = 'block';
+    document.getElementById('boxSummary').style.display = 'none';
+    document.getElementById('exportBoxBtn').style.display = 'none';
+}
+
+function hideBoxProgress() {
+    document.getElementById('boxProgressContainer').style.display = 'none';
+    document.getElementById('boxProgressText').style.display = 'none';
+}
+
+function updateBoxProgress(percentage, message) {
+    const progressFill = document.getElementById('boxProgressFill');
+    const progressText = document.getElementById('boxProgressText');
+    
+    if (progressFill) {
+        progressFill.style.width = `${percentage}%`;
+    }
+    if (progressText) {
+        progressText.textContent = message || 'Processing...';
+    }
 }
 
 // Initialize when page loads
