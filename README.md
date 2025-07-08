@@ -1,6 +1,6 @@
 # 🔍 DataGuard - Advanced Excel Analysis Tools
 
-A comprehensive, browser-based Excel data processing suite with advanced search, duplicate detection, and sequence validation capabilities.
+A comprehensive, browser-based Excel data processing suite with advanced search, duplicate detection, sequence validation, and row insertion capabilities.
 
 ## ✨ Key Features
 
@@ -121,6 +121,41 @@ Row 8: John, Smith, john@email.com → DUPLICATE
 0002  Customer D  ← OK
 ```
 
+### 4. ➕ Insert Empty Rows by Box Number
+**Purpose**: Automatically insert empty rows between groups of different box numbers to visually separate them in your Excel sheet.
+
+#### Features:
+- **Box column selection** from uploaded file
+- **Automatic empty row insertion** between groups of different box numbers
+- **Progress tracking** and summary of inserted rows
+- **Excel export** with modified data and summary
+
+#### Usage:
+1. Upload Excel file
+2. Select sheet
+3. Choose box number column
+4. Click "Insert Empty Rows"
+5. Review summary and export the modified file
+
+#### Example:
+**Before:**
+```
+00201354  ...
+00201354  ...
+00201354  ...
+00201356  ...
+00201356  ...
+```
+**After:**
+```
+00201354  ...
+00201354  ...
+00201354  ...
+[empty row]
+00201356  ...
+00201356  ...
+```
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -139,6 +174,7 @@ Row 8: John, Smith, john@email.com → DUPLICATE
      - Advanced Column Search
      - Duplicate Row Identifier
      - Box Number Sequence Validator
+     - Insert Empty Rows by Box Number
 
 3. **Upload Files**
    - Use drag-and-drop or click to browse
@@ -207,6 +243,10 @@ Row 8: John, Smith, john@email.com → DUPLICATE
 - **OK**: Box number follows expected sequence
 - **ISSUE**: Box number doesn't match expected sequence
 - **SEPARATOR**: Empty row separating blocks
+
+### Insert Empty Rows by Box Number
+- **Original Rows**: Number of data rows before insertion
+- **Empty Rows Inserted**: Number of empty rows added between box number changes
 
 ### Similarity Scores
 - **100%**: Perfect match
@@ -330,7 +370,7 @@ For issues or questions:
 
 ---
 
-**Version**: 2.0.0  
+**Version**: 2.1.0  
 **Last Updated**: 2024  
 **Browser Support**: Modern browsers with ES6 support  
-**Tools**: Advanced Column Search, Duplicate Row Identifier, Box Number Sequence Validator 
+**Tools**: Advanced Column Search, Duplicate Row Identifier, Box Number Sequence Validator, Insert Empty Rows by Box Number 

@@ -30,6 +30,7 @@
                     <option value="advanced-search" selected>Advanced Column Search</option>
                     <option value="duplicate-identifier">Duplicate Row Identifier</option>
                     <option value="box-validator">Box Number Sequence Validator</option>
+                    <option value="insert-empty-rows">Insert Empty Rows by Box Number</option>
                 </select>
             </div>
 
@@ -305,6 +306,59 @@
                         <button id="exportBoxBtn" class="btn btn-export" style="display: none;">Export Results</button>
                     </div>
                     <div id="boxSummaryStats" class="summary-stats"></div>
+                </div>
+            </div>
+
+            <!-- Insert Empty Rows by Box Number -->
+            <div id="insert-empty-rows" class="task-content">
+                <h2>➕ Insert Empty Rows by Box Number</h2>
+                <p class="alert alert-info">Automatically insert empty rows between groups of different box numbers to visually separate them.</p>
+                <!-- File Upload Section -->
+                <div class="section">
+                    <h3>📁 File Selection</h3>
+                    <div class="form-group">
+                        <label>Excel File:</label>
+                        <div class="file-input">
+                            <input type="file" id="insertRowsFile" accept=".xlsx,.xls" />
+                            <label for="insertRowsFile" class="file-input-label">
+                                📁 Choose Excel File
+                            </label>
+                        </div>
+                        <div class="file-info" id="insertRowsFileInfo">No file selected</div>
+                    </div>
+                </div>
+                <!-- Sheet and Column Selection -->
+                <div class="section">
+                    <h3>📊 Sheet and Column Configuration</h3>
+                    <div class="form-group">
+                        <label>Sheet:</label>
+                        <select id="insertRowsSheet" class="form-control">
+                            <option value="">Select sheet...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Box Number Column:</label>
+                        <select id="insertRowsBoxColumn" class="form-control">
+                            <option value="">Select column...</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- Action Button -->
+                <button id="performInsertRowsBtn" class="btn btn-primary">
+                    ➕ Insert Empty Rows
+                </button>
+                <!-- Progress Section -->
+                <div id="insertRowsProgressContainer" class="progress-bar" style="display: none;">
+                    <div class="progress-fill" id="insertRowsProgressFill"></div>
+                </div>
+                <div id="insertRowsProgressText" class="loading-text" style="display: none;">Processing...</div>
+                <!-- Results Summary -->
+                <div id="insertRowsSummary" class="search-summary" style="display: none;">
+                    <div class="results-header">
+                        <h3>Insert Empty Rows Results</h3>
+                        <button id="exportInsertRowsBtn" class="btn btn-export" style="display: none;">Export Modified File</button>
+                    </div>
+                    <div id="insertRowsSummaryStats" class="summary-stats"></div>
                 </div>
             </div>
         </div>

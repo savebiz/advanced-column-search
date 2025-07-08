@@ -14,6 +14,11 @@ let boxWorkbook = null;
 let boxInitialized = false;
 window.boxResults = null;
 
+// Insert Empty Rows by Box Number variables
+let insertRowsWorkbook = null;
+let insertRowsInitialized = false;
+window.insertRowsResults = null;
+
 // Batch processing state
 let batchProcessing = {
     isActive: false,
@@ -331,6 +336,69 @@ function initializeBoxValidator() {
     console.log('[BoxValidator] Initialization complete');
 }
 
+// Initialize Insert Empty Rows by Box Number
+function initializeInsertRows() {
+    if (insertRowsInitialized) {
+        console.log('[InsertRows] Already initialized, skipping...');
+        return;
+    }
+
+    // Element existence verification
+    const fileInput = document.getElementById('insertRowsFile');
+    if (!fileInput) {
+        console.error('[InsertRows] Required elements not found');
+        return;
+    }
+
+    // Event listener attachment
+    fileInput.addEventListener('change', handleInsertRowsFileChange);
+    document.getElementById('insertRowsSheet').addEventListener('change', handleInsertRowsSheetChange);
+    document.getElementById('performInsertRowsBtn').addEventListener('click', performInsertRows);
+    document.getElementById('exportInsertRowsBtn').addEventListener('click', exportInsertRowsResults);
+
+    insertRowsInitialized = true;
+    console.log('[InsertRows] Initialization complete');
+}
+
+function handleInsertRowsFileChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    document.getElementById('insertRowsFileInfo').textContent = `${file.name} (${formatFileSize(file.size)})`;
+    updateFileInputLabel('insertRowsFile', true);
+    if (!validateFile(file)) return;
+    processInsertRowsExcelFile(file);
+}
+
+function processInsertRowsExcelFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+                throw new Error('No sheets found in the Excel file. The file may be corrupted or empty.');
+            }
+            insertRowsWorkbook = workbook;
+            populateSheetDropdown(workbook, 'insertRowsSheet');
+        } catch (error) {
+            console.error('[InsertRows] Error processing file:', error);
+            alert(`Error processing the Excel file: ${error.message}`);
+        }
+    };
+    reader.onerror = function() {
+        alert('Error reading the file. Please try again.');
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function handleInsertRowsSheetChange(event) {
+    const sheetName = event.target.value;
+    if (insertRowsWorkbook && sheetName) {
+        populateColumnDropdown(insertRowsWorkbook, sheetName, 'insertRowsBoxColumn');
+    }
+}
+
 // Task selector functionality
 function handleTaskChange(event) {
     const selectedTask = event.target.value;
@@ -354,6 +422,8 @@ function handleTaskChange(event) {
                 initializeDuplicateIdentifier();
             } else if (selectedTask === 'box-validator' && !boxInitialized) {
                 initializeBoxValidator();
+            } else if (selectedTask === 'insert-empty-rows' && !insertRowsInitialized) {
+                initializeInsertRows();
             }
         }
     }
@@ -1675,6 +1745,150 @@ function updateBoxProgress(percentage, message) {
     const progressFill = document.getElementById('boxProgressFill');
     const progressText = document.getElementById('boxProgressText');
     
+    if (progressFill) {
+        progressFill.style.width = `${percentage}%`;
+    }
+    if (progressText) {
+        progressText.textContent = message || 'Processing...';
+    }
+}
+
+// Insert Empty Rows by Box Number - Core Logic
+function performInsertRows() {
+    if (!insertRowsWorkbook) {
+        alert('Please upload an Excel file.');
+        return;
+    }
+    const sheetName = document.getElementById('insertRowsSheet').value;
+    if (!sheetName) {
+        alert('Please select a sheet.');
+        return;
+    }
+    const boxColumnLetter = document.getElementById('insertRowsBoxColumn').value;
+    if (!boxColumnLetter) {
+        alert('Please select a box number column.');
+        return;
+    }
+    const sheet = insertRowsWorkbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    if (data.length <= 1) {
+        alert('The selected sheet has no data or only headers.');
+        return;
+    }
+    const boxColIdx = XLSX.utils.decode_col(boxColumnLetter);
+    showInsertRowsProgress();
+    updateInsertRowsProgress(0, 'Processing...');
+    setTimeout(() => {
+        const results = insertEmptyRowsByBoxNumber(data, boxColIdx);
+        displayInsertRowsResults(results);
+    }, 100);
+}
+
+function insertEmptyRowsByBoxNumber(data, boxColIdx) {
+    const newData = [];
+    let prevBox = null;
+    let insertedCount = 0;
+    // Always keep header
+    newData.push(data[0]);
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const box = row[boxColIdx] ? String(row[boxColIdx]).trim() : '';
+        // If box number changes and previous row is not empty, insert an empty row
+        if (prevBox !== null && box && box !== prevBox) {
+            // Check if previous row is already empty
+            const prevRow = newData[newData.length - 1];
+            const isPrevEmpty = prevRow.every(cell => !cell || String(cell).trim() === '');
+            if (!isPrevEmpty) {
+                // Insert empty row
+                newData.push(Array(row.length).fill(''));
+                insertedCount++;
+            }
+        }
+        newData.push(row);
+        prevBox = box;
+        if (i % 100 === 0) {
+            updateInsertRowsProgress((i / data.length) * 100, `Processing row ${i}...`);
+        }
+    }
+    return {
+        data: newData,
+        summary: {
+            totalRows: data.length - 1,
+            insertedRows: insertedCount,
+            boxColumn: XLSX.utils.encode_col(boxColIdx)
+        }
+    };
+}
+
+function displayInsertRowsResults(results) {
+    window.insertRowsResults = results;
+    const summary = results.summary;
+    const statsHtml = `
+        <div class="stat-card">
+            <div class="stat-number">${summary.totalRows}</div>
+            <div class="stat-label">Original Rows</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">${summary.insertedRows}</div>
+            <div class="stat-label">Empty Rows Inserted</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">${summary.boxColumn}</div>
+            <div class="stat-label">Box Column</div>
+        </div>
+    `;
+    document.getElementById('insertRowsSummaryStats').innerHTML = statsHtml;
+    document.getElementById('insertRowsSummary').style.display = 'block';
+    document.getElementById('exportInsertRowsBtn').style.display = 'inline-flex';
+    setTimeout(() => {
+        hideInsertRowsProgress();
+    }, 1000);
+}
+
+function exportInsertRowsResults() {
+    if (window.insertRowsResults) {
+        try {
+            const newWorkbook = XLSX.utils.book_new();
+            const sheet = XLSX.utils.aoa_to_sheet(window.insertRowsResults.data);
+            XLSX.utils.book_append_sheet(newWorkbook, sheet, 'With Empty Rows');
+            // Add summary sheet
+            const summary = window.insertRowsResults.summary;
+            const summaryData = [
+                ['Insert Empty Rows Summary'],
+                [''],
+                ['Original Rows', summary.totalRows],
+                ['Empty Rows Inserted', summary.insertedRows],
+                ['Box Column', summary.boxColumn],
+                [''],
+                ['Generated on', new Date().toLocaleString()]
+            ];
+            const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(newWorkbook, summarySheet, 'Summary');
+            const filename = `with_empty_rows_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(newWorkbook, filename);
+        } catch (error) {
+            console.error('[exportInsertRowsResults] Error:', error);
+            alert('Error exporting results: ' + error.message);
+        }
+    } else {
+        alert('No results available for export');
+    }
+}
+
+// Progress Management for Insert Empty Rows
+function showInsertRowsProgress() {
+    document.getElementById('insertRowsProgressContainer').style.display = 'block';
+    document.getElementById('insertRowsProgressText').style.display = 'block';
+    document.getElementById('insertRowsSummary').style.display = 'none';
+    document.getElementById('exportInsertRowsBtn').style.display = 'none';
+}
+function hideInsertRowsProgress() {
+    document.getElementById('insertRowsProgressContainer').style.display = 'none';
+    document.getElementById('insertRowsProgressText').style.display = 'none';
+}
+function updateInsertRowsProgress(percentage, message) {
+    const progressFill = document.getElementById('insertRowsProgressFill');
+    const progressText = document.getElementById('insertRowsProgressText');
     if (progressFill) {
         progressFill.style.width = `${percentage}%`;
     }
