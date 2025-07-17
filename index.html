@@ -369,7 +369,7 @@
                 <p class="alert alert-info">Find values from selected columns in Sheet B (source) within expanded content of selected columns in Sheet A (target), with configurable match type and logic for each pair.</p>
                 <!-- File Upload Section -->
                 <div class="section">
-                    <h3>�� File Selection</h3>
+                    <h3>📁 File Selection</h3>
                     <div class="grid-2">
                         <div class="form-group">
                             <label>Source Excel File (Sheet B):</label>
@@ -409,23 +409,23 @@
                     <div class="form-group">
                         <label>Column Pairs to Match:</label>
                         <div id="columnPairsContainer" class="column-pairs-container">
-                            <div class="column-pair-item">
-                                <select class="pair-source-column-select form-control">
+                            <div class="column-pair-item" style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                                <select class="pair-source-column-select form-control" style="flex: 3 3 0; min-width: 140px;">
                                     <option value="">Source column...</option>
                                 </select>
                                 <span>in</span>
-                                <select class="pair-target-column-select form-control">
+                                <select class="pair-target-column-select form-control" style="flex: 3 3 0; min-width: 140px;">
                                     <option value="">Target column...</option>
                                 </select>
-                                <select class="pair-match-type form-control">
+                                <select class="pair-match-type form-control" style="flex: 1 1 0; min-width: 70px; margin-left: 8px;">
                                     <option value="exact">Exact</option>
                                     <option value="fuzzy">Fuzzy</option>
                                 </select>
-                                <select class="pair-logic-type form-control">
+                                <select class="pair-logic-type form-control" style="flex: 1 1 0; min-width: 70px; margin-left: 8px;">
                                     <option value="and">AND</option>
                                     <option value="or">OR</option>
                                 </select>
-                                <button type="button" class="btn btn-remove" onclick="removeColumnPair(this)">Remove</button>
+                                <button type="button" class="btn btn-remove" onclick="removeColumnPair(this)" style="margin-left: 8px;">Remove</button>
                             </div>
                         </div>
                         <button type="button" id="addColumnPair" class="btn btn-secondary">
