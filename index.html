@@ -31,6 +31,7 @@
                     <option value="duplicate-identifier">Duplicate Row Identifier</option>
                     <option value="box-validator">Box Number Sequence Validator</option>
                     <option value="insert-empty-rows">Insert Empty Rows by Box Number</option>
+                    <option value="column-pair-cross-match">Column Pair Cross-Match</option>
                 </select>
             </div>
 
@@ -359,6 +360,112 @@
                         <button id="exportInsertRowsBtn" class="btn btn-export" style="display: none;">Export Modified File</button>
                     </div>
                     <div id="insertRowsSummaryStats" class="summary-stats"></div>
+                </div>
+            </div>
+
+            <!-- Column Pair Cross-Match -->
+            <div id="column-pair-cross-match" class="task-content">
+                <h2>🔗 Column Pair Cross-Match</h2>
+                <p class="alert alert-info">Find values from selected columns in Sheet B (source) within expanded content of selected columns in Sheet A (target), with configurable match type and logic for each pair.</p>
+                <!-- File Upload Section -->
+                <div class="section">
+                    <h3>�� File Selection</h3>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>Source Excel File (Sheet B):</label>
+                            <div class="file-input">
+                                <input type="file" id="pairSourceFile" accept=".xlsx,.xls" />
+                                <label for="pairSourceFile" class="file-input-label">📁 Choose Source File</label>
+                            </div>
+                            <div class="file-info" id="pairSourceFileInfo">No file selected</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Target Excel File (Sheet A):</label>
+                            <div class="file-input">
+                                <input type="file" id="pairTargetFile" accept=".xlsx,.xls" />
+                                <label for="pairTargetFile" class="file-input-label">📁 Choose Target File</label>
+                            </div>
+                            <div class="file-info" id="pairTargetFileInfo">No file selected</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Sheet and Column Pair Selection -->
+                <div class="section">
+                    <h3>🔗 Column Pair Configuration</h3>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>Source Sheet (Sheet B):</label>
+                            <select id="pairSourceSheet" class="form-control">
+                                <option value="">Select sheet...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Target Sheet (Sheet A):</label>
+                            <select id="pairTargetSheet" class="form-control">
+                                <option value="">Select sheet...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Column Pairs to Match:</label>
+                        <div id="columnPairsContainer" class="column-pairs-container">
+                            <div class="column-pair-item">
+                                <select class="pair-source-column-select form-control">
+                                    <option value="">Source column...</option>
+                                </select>
+                                <span>in</span>
+                                <select class="pair-target-column-select form-control">
+                                    <option value="">Target column...</option>
+                                </select>
+                                <select class="pair-match-type form-control">
+                                    <option value="exact">Exact</option>
+                                    <option value="fuzzy">Fuzzy</option>
+                                </select>
+                                <select class="pair-logic-type form-control">
+                                    <option value="and">AND</option>
+                                    <option value="or">OR</option>
+                                </select>
+                                <button type="button" class="btn btn-remove" onclick="removeColumnPair(this)">Remove</button>
+                            </div>
+                        </div>
+                        <button type="button" id="addColumnPair" class="btn btn-secondary">
+                            <span class="add-icon">+</span> Add Column Pair
+                        </button>
+                    </div>
+                </div>
+                <!-- Fuzzy Match Config -->
+                <div class="section">
+                    <h3>⚙️ Fuzzy Match Configuration</h3>
+                    <div class="form-group">
+                        <label for="pairSimilarityThreshold">Similarity Threshold (for fuzzy matching):</label>
+                        <div class="slider-container">
+                            <input type="range" id="pairSimilarityThreshold" min="0.1" max="1.0" step="0.02" value="0.8">
+                            <span class="similarity-display">
+                                <span id="pairSimilarityValue">80%</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="pairCaseSensitive">
+                            <label for="pairCaseSensitive">Case Sensitive</label>
+                        </div>
+                    </div>
+                </div>
+                <!-- Action Buttons -->
+                <button id="performPairMatchBtn" class="btn btn-primary">🔗 Perform Cross-Match</button>
+                <!-- Progress Section -->
+                <div id="pairProgressContainer" class="progress-bar" style="display: none;">
+                    <div class="progress-fill" id="pairProgressFill"></div>
+                </div>
+                <div id="pairProgressText" class="loading-text" style="display: none;">Processing...</div>
+                <!-- Results Summary -->
+                <div id="pairMatchSummary" class="search-summary" style="display: none;">
+                    <div class="results-header">
+                        <h3>Cross-Match Results Summary</h3>
+                        <button id="exportPairMatchBtn" class="btn btn-export" style="display: none;">Export Results</button>
+                    </div>
+                    <div id="pairSummaryStats" class="summary-stats"></div>
                 </div>
             </div>
         </div>

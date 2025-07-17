@@ -19,6 +19,12 @@ let insertRowsWorkbook = null;
 let insertRowsInitialized = false;
 window.insertRowsResults = null;
 
+// --- Column Pair Cross-Match Task Variables ---
+let pairSourceWorkbook = null;
+let pairTargetWorkbook = null;
+let pairCrossMatchInitialized = false;
+window.pairCrossMatchResults = null;
+
 // Batch processing state
 let batchProcessing = {
     isActive: false,
@@ -424,7 +430,7 @@ function handleTaskChange(event) {
                 initializeBoxValidator();
             } else if (selectedTask === 'insert-empty-rows' && !insertRowsInitialized) {
                 initializeInsertRows();
-            }
+            } else if (selectedTask === 'column-pair-cross-match' && !pairCrossMatchInitialized) { initializePairCrossMatch(); }
         }
     }
 }
@@ -1896,6 +1902,311 @@ function updateInsertRowsProgress(percentage, message) {
         progressText.textContent = message || 'Processing...';
     }
 }
+
+// --- Column Pair Cross-Match ---
+function initializePairCrossMatch() {
+    if (pairCrossMatchInitialized) {
+        console.log('[PairCrossMatch] Already initialized, skipping...');
+        return;
+    }
+    // File input handlers
+    const sourceFileInput = document.getElementById('pairSourceFile');
+    const targetFileInput = document.getElementById('pairTargetFile');
+    if (!sourceFileInput || !targetFileInput) {
+        console.error('[PairCrossMatch] Required elements not found');
+        return;
+    }
+    sourceFileInput.addEventListener('change', handlePairSourceFileChange);
+    targetFileInput.addEventListener('change', handlePairTargetFileChange);
+    // Sheet dropdown handlers
+    document.getElementById('pairSourceSheet').addEventListener('change', handlePairSourceSheetChange);
+    document.getElementById('pairTargetSheet').addEventListener('change', handlePairTargetSheetChange);
+    // Add/remove column pair
+    document.getElementById('addColumnPair').addEventListener('click', addColumnPair);
+    // Perform match
+    document.getElementById('performPairMatchBtn').addEventListener('click', performPairCrossMatch);
+    document.getElementById('exportPairMatchBtn').addEventListener('click', exportPairCrossMatchResults);
+    // Similarity slider
+    document.getElementById('pairSimilarityThreshold').addEventListener('input', function(e) {
+        document.getElementById('pairSimilarityValue').textContent = Math.round(parseFloat(e.target.value) * 100) + '%';
+    });
+    // Initial column pair
+    populateColumnPairs();
+    pairCrossMatchInitialized = true;
+    console.log('[PairCrossMatch] Initialization complete');
+}
+
+function handlePairSourceFileChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    document.getElementById('pairSourceFileInfo').textContent = `${file.name} (${formatFileSize(file.size)})`;
+    updateFileInputLabel('pairSourceFile', true);
+    if (!validateFile(file)) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+                throw new Error('No sheets found in the Excel file.');
+            }
+            pairSourceWorkbook = workbook;
+            populateSheetDropdown(workbook, 'pairSourceSheet');
+        } catch (error) {
+            alert(`Error processing the Excel file: ${error.message}`);
+        }
+    };
+    reader.onerror = function() { alert('Error reading the file.'); };
+    reader.readAsArrayBuffer(file);
+}
+function handlePairTargetFileChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    document.getElementById('pairTargetFileInfo').textContent = `${file.name} (${formatFileSize(file.size)})`;
+    updateFileInputLabel('pairTargetFile', true);
+    if (!validateFile(file)) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+                throw new Error('No sheets found in the Excel file.');
+            }
+            pairTargetWorkbook = workbook;
+            populateSheetDropdown(workbook, 'pairTargetSheet');
+        } catch (error) {
+            alert(`Error processing the Excel file: ${error.message}`);
+        }
+    };
+    reader.onerror = function() { alert('Error reading the file.'); };
+    reader.readAsArrayBuffer(file);
+}
+function handlePairSourceSheetChange(event) {
+    const sheetName = event.target.value;
+    if (pairSourceWorkbook && sheetName) {
+        populatePairSourceColumns(pairSourceWorkbook, sheetName);
+    }
+}
+function handlePairTargetSheetChange(event) {
+    const sheetName = event.target.value;
+    if (pairTargetWorkbook && sheetName) {
+        populatePairTargetColumns(pairTargetWorkbook, sheetName);
+    }
+}
+function populatePairSourceColumns(workbook, sheetName) {
+    const selects = document.querySelectorAll('.pair-source-column-select');
+    selects.forEach(select => {
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">Source column...</option>';
+        if (!sheetName) return;
+        try {
+            const sheet = workbook.Sheets[sheetName];
+            if (!sheet || !sheet['!ref']) return;
+            const range = XLSX.utils.decode_range(sheet['!ref']);
+            for (let col = range.s.c; col <= range.e.c; col++) {
+                const colLetter = XLSX.utils.encode_col(col);
+                const cellAddress = colLetter + '1';
+                const headerCell = sheet[cellAddress];
+                const headerValue = headerCell ? String(headerCell.v) : `Column ${colLetter}`;
+                const option = document.createElement('option');
+                option.value = colLetter;
+                option.textContent = `${colLetter}: ${headerValue}`;
+                if (colLetter === currentValue) option.selected = true;
+                select.appendChild(option);
+            }
+        } catch (error) { console.error('[populatePairSourceColumns] Error:', error); }
+    });
+}
+function populatePairTargetColumns(workbook, sheetName) {
+    const selects = document.querySelectorAll('.pair-target-column-select');
+    selects.forEach(select => {
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">Target column...</option>';
+        if (!sheetName) return;
+        try {
+            const sheet = workbook.Sheets[sheetName];
+            if (!sheet || !sheet['!ref']) return;
+            const range = XLSX.utils.decode_range(sheet['!ref']);
+            for (let col = range.s.c; col <= range.e.c; col++) {
+                const colLetter = XLSX.utils.encode_col(col);
+                const cellAddress = colLetter + '1';
+                const headerCell = sheet[cellAddress];
+                const headerValue = headerCell ? String(headerCell.v) : `Column ${colLetter}`;
+                const option = document.createElement('option');
+                option.value = colLetter;
+                option.textContent = `${colLetter}: ${headerValue}`;
+                if (colLetter === currentValue) option.selected = true;
+                select.appendChild(option);
+            }
+        } catch (error) { console.error('[populatePairTargetColumns] Error:', error); }
+    });
+}
+function populateColumnPairs() {
+    // Populate both source and target columns for all pairs
+    const sourceSheet = document.getElementById('pairSourceSheet').value;
+    const targetSheet = document.getElementById('pairTargetSheet').value;
+    if (pairSourceWorkbook && sourceSheet) populatePairSourceColumns(pairSourceWorkbook, sourceSheet);
+    if (pairTargetWorkbook && targetSheet) populatePairTargetColumns(pairTargetWorkbook, targetSheet);
+}
+function addColumnPair() {
+    const container = document.getElementById('columnPairsContainer');
+    const newItem = document.createElement('div');
+    newItem.className = 'column-pair-item';
+    // Source column select
+    const sourceSelect = document.createElement('select');
+    sourceSelect.className = 'pair-source-column-select form-control';
+    sourceSelect.innerHTML = '<option value="">Source column...</option>';
+    // Target column select
+    const targetSelect = document.createElement('select');
+    targetSelect.className = 'pair-target-column-select form-control';
+    targetSelect.innerHTML = '<option value="">Target column...</option>';
+    // Match type select
+    const matchTypeSelect = document.createElement('select');
+    matchTypeSelect.className = 'pair-match-type form-control';
+    matchTypeSelect.innerHTML = '<option value="exact">Exact</option><option value="fuzzy">Fuzzy</option>';
+    // Logic type select
+    const logicTypeSelect = document.createElement('select');
+    logicTypeSelect.className = 'pair-logic-type form-control';
+    logicTypeSelect.innerHTML = '<option value="and">AND</option><option value="or">OR</option>';
+    // Remove button
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-remove';
+    removeBtn.textContent = 'Remove';
+    removeBtn.onclick = function() { removeColumnPair(this); };
+    // Append all
+    newItem.appendChild(sourceSelect);
+    newItem.appendChild(document.createTextNode(' in '));
+    newItem.appendChild(targetSelect);
+    newItem.appendChild(matchTypeSelect);
+    newItem.appendChild(logicTypeSelect);
+    newItem.appendChild(removeBtn);
+    container.appendChild(newItem);
+    populateColumnPairs();
+}
+function removeColumnPair(button) {
+    const container = document.getElementById('columnPairsContainer');
+    const items = container.querySelectorAll('.column-pair-item');
+    if (items.length > 1) {
+        button.parentElement.remove();
+    } else {
+        alert('At least one column pair is required.');
+    }
+}
+
+function performPairCrossMatch() {
+    // Validate input
+    const sourceSheetName = document.getElementById('pairSourceSheet').value;
+    const targetSheetName = document.getElementById('pairTargetSheet').value;
+    if (!pairSourceWorkbook || !pairTargetWorkbook || !sourceSheetName || !targetSheetName) {
+        alert('Please select both source and target files and sheets.');
+        return;
+    }
+    const sourceSheet = pairSourceWorkbook.Sheets[sourceSheetName];
+    const targetSheet = pairTargetWorkbook.Sheets[targetSheetName];
+    const sourceData = XLSX.utils.sheet_to_json(sourceSheet, { header: 1 });
+    const targetData = XLSX.utils.sheet_to_json(targetSheet, { header: 1 });
+    // Gather column pairs
+    const pairItems = document.querySelectorAll('.column-pair-item');
+    const pairs = [];
+    pairItems.forEach(item => {
+        const sourceCol = item.querySelector('.pair-source-column-select').value;
+        const targetCol = item.querySelector('.pair-target-column-select').value;
+        const matchType = item.querySelector('.pair-match-type').value;
+        const logicType = item.querySelector('.pair-logic-type').value;
+        if (sourceCol && targetCol) {
+            pairs.push({ sourceCol, targetCol, matchType, logicType });
+        }
+    });
+    if (pairs.length === 0) {
+        alert('Please select at least one valid column pair.');
+        return;
+    }
+    // Get indices
+    const sourceHeader = sourceData[0];
+    const targetHeader = targetData[0];
+    const pairIndices = pairs.map(pair => ({
+        sourceIdx: XLSX.utils.decode_col(pair.sourceCol),
+        targetIdx: XLSX.utils.decode_col(pair.targetCol),
+        matchType: pair.matchType,
+        logicType: pair.logicType
+    }));
+    // Config
+    const similarityThreshold = parseFloat(document.getElementById('pairSimilarityThreshold').value);
+    const caseSensitive = document.getElementById('pairCaseSensitive').checked;
+    // Results
+    const results = [];
+    const headers = ['Row'];
+    pairIndices.forEach((pair, i) => {
+        headers.push(`Source_${pairs[i].sourceCol}`);
+        headers.push(`Target_${pairs[i].targetCol}`);
+        headers.push(`Similarity_${i+1}`);
+        headers.push(`MatchType_${i+1}`);
+        headers.push(`Logic_${i+1}`);
+    });
+    results.push(headers);
+    // For each row in source, find corresponding row in target (by index)
+    for (let i = 1; i < sourceData.length && i < targetData.length; i++) {
+        const row = [i+1];
+        let overallMatch = true;
+        for (let p = 0; p < pairIndices.length; p++) {
+            const { sourceIdx, targetIdx, matchType, logicType } = pairIndices[p];
+            const sourceVal = sourceData[i][sourceIdx] ? String(sourceData[i][sourceIdx]).trim() : '';
+            const targetVal = targetData[i][targetIdx] ? String(targetData[i][targetIdx]).trim() : '';
+            let similarity = 0;
+            let matchResult = 'No Match';
+            if (sourceVal && targetVal) {
+                if (matchType === 'exact') {
+                    similarity = (caseSensitive ? sourceVal === targetVal : sourceVal.toLowerCase() === targetVal.toLowerCase()) ? 1 : 0;
+                    matchResult = similarity === 1 ? 'Exact' : 'No Match';
+                } else {
+                    // Fuzzy: check if sourceVal is contained in targetVal or vice versa, or use similarity
+                    similarity = calculateSimilarity(sourceVal, targetVal, caseSensitive);
+                    matchResult = similarity >= similarityThreshold ? (similarity === 1 ? 'Exact' : 'Partial') : 'No Match';
+                }
+            }
+            row.push(sourceVal);
+            row.push(targetVal);
+            row.push(Math.round(similarity * 100) + '%');
+            row.push(matchResult);
+            row.push(logicType.toUpperCase());
+            // Per-pair logic: AND means this pair must match, OR means this pair can be ignored if not matched
+            if (logicType === 'and' && matchResult === 'No Match') {
+                overallMatch = false;
+            }
+        }
+        // Only include rows where all AND pairs matched
+        if (overallMatch) {
+            results.push(row);
+        }
+    }
+    window.pairCrossMatchResults = results;
+    displayPairCrossMatchResults(results);
+}
+function displayPairCrossMatchResults(results) {
+    const summaryDiv = document.getElementById('pairMatchSummary');
+    const statsDiv = document.getElementById('pairSummaryStats');
+    if (!results || results.length < 2) {
+        summaryDiv.style.display = 'none';
+        return;
+    }
+    summaryDiv.style.display = 'block';
+    document.getElementById('exportPairMatchBtn').style.display = 'inline-block';
+    // Show stats
+    statsDiv.innerHTML = `<strong>Total Matches:</strong> ${results.length-1}`;
+}
+function exportPairCrossMatchResults() {
+    if (!window.pairCrossMatchResults || window.pairCrossMatchResults.length < 2) {
+        alert('No results to export.');
+        return;
+    }
+    const ws = XLSX.utils.aoa_to_sheet(window.pairCrossMatchResults);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'CrossMatchResults');
+    XLSX.writeFile(wb, 'ColumnPairCrossMatchResults.xlsx');
+}
+// --- End Column Pair Cross-Match ---
 
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', function() {
