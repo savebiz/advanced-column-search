@@ -2053,27 +2053,42 @@ function addColumnPair() {
     const container = document.getElementById('columnPairsContainer');
     const newItem = document.createElement('div');
     newItem.className = 'column-pair-item';
+    newItem.style.display = 'flex';
+    newItem.style.alignItems = 'center';
+    newItem.style.gap = '12px';
+    newItem.style.width = '100%';
     // Source column select
     const sourceSelect = document.createElement('select');
     sourceSelect.className = 'pair-source-column-select form-control';
+    sourceSelect.style.flex = '3 3 0';
+    sourceSelect.style.minWidth = '140px';
     sourceSelect.innerHTML = '<option value="">Source column...</option>';
     // Target column select
     const targetSelect = document.createElement('select');
     targetSelect.className = 'pair-target-column-select form-control';
+    targetSelect.style.flex = '3 3 0';
+    targetSelect.style.minWidth = '140px';
     targetSelect.innerHTML = '<option value="">Target column...</option>';
     // Match type select
     const matchTypeSelect = document.createElement('select');
     matchTypeSelect.className = 'pair-match-type form-control';
+    matchTypeSelect.style.flex = '1 1 0';
+    matchTypeSelect.style.minWidth = '70px';
+    matchTypeSelect.style.marginLeft = '8px';
     matchTypeSelect.innerHTML = '<option value="exact">Exact</option><option value="fuzzy">Fuzzy</option>';
     // Logic type select
     const logicTypeSelect = document.createElement('select');
     logicTypeSelect.className = 'pair-logic-type form-control';
+    logicTypeSelect.style.flex = '1 1 0';
+    logicTypeSelect.style.minWidth = '70px';
+    logicTypeSelect.style.marginLeft = '8px';
     logicTypeSelect.innerHTML = '<option value="and">AND</option><option value="or">OR</option>';
     // Remove button
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'btn btn-remove';
     removeBtn.textContent = 'Remove';
+    removeBtn.style.marginLeft = '8px';
     removeBtn.onclick = function() { removeColumnPair(this); };
     // Append all
     newItem.appendChild(sourceSelect);
